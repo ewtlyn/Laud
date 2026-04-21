@@ -346,7 +346,7 @@ function RoomPage() {
     if (videoType === "vk") {
       return (
         <iframe
-          src={videoUrl}
+          url={videoUrl}
           width="100%"
           height="500"
           allow="autoplay; encrypted-media; fullscreen; picture-in-picture"
@@ -361,7 +361,7 @@ function RoomPage() {
     return (
       <video
         ref={htmlVideoRef}
-        src={videoUrl}
+        url={videoUrl}
         controls={isHost}
         onPlay={handleFilePlay}
         onPause={handleFilePause}
