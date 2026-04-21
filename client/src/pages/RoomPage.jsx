@@ -182,7 +182,7 @@ function RoomPage() {
       socket.emit("leave_room", { roomId });
       joinedRef.current = false;
     };
-  }, [roomId, username, navigate, videoType, playerReady]);
+}, [roomId, username, navigate, videoType]);
 
   useEffect(() => {
     messagesEndRef.current?.scrollIntoView({ behavior: "smooth" });
