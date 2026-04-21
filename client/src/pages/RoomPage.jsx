@@ -3,7 +3,7 @@ import { useLocation, useNavigate, useParams } from "react-router-dom";
 import { io } from "socket.io-client";
 import ReactPlayer from "react-player";
 
-const SERVER_URL = import.meta.env.VITE_SERVER_URL;
+const SERVER_URL = import.meta.env.VITE_SERVER_URL || "http://localhost:5001";
 
 const socket = io(SERVER_URL, {
   transports: ["websocket", "polling"]
@@ -40,6 +40,7 @@ function RoomPage() {
   const htmlVideoRef = useRef(null);
   const playerRef = useRef(null);
   const messagesEndRef = useRef(null);
+  const lastProgressEmitRef = useRef(-1);
 
   const [users, setUsers] = useState([]);
   const [hostId, setHostId] = useState("");
@@ -50,6 +51,7 @@ function RoomPage() {
   const [message, setMessage] = useState("");
   const [copyText, setCopyText] = useState("Скопировать ссылку");
   const [playing, setPlaying] = useState(false);
+  const [playerReady, setPlayerReady] = useState(false);
 
   const isHost = useMemo(() => socket.id === hostId, [hostId]);
 
@@ -83,11 +85,13 @@ function RoomPage() {
     };
 
     const onVideoState = (state) => {
+      const nextType = state.videoType || "file";
+
       setVideoUrl(state.videoUrl || "");
-      setVideoType(state.videoType || "file");
+      setVideoType(nextType);
       setPlaying(!!state.isPlaying);
 
-      if (state.videoType === "file" && htmlVideoRef.current) {
+      if (nextType === "file" && htmlVideoRef.current) {
         htmlVideoRef.current.currentTime = state.currentTime || 0;
 
         if (state.isPlaying) {
@@ -97,7 +101,7 @@ function RoomPage() {
         }
       }
 
-      if (state.videoType === "youtube" && playerRef.current) {
+      if (nextType === "youtube" && playerRef.current && playerReady) {
         try {
           playerRef.current.seekTo(state.currentTime || 0, "seconds");
         } catch {}
@@ -178,7 +182,7 @@ function RoomPage() {
       socket.emit("leave_room", { roomId });
       joinedRef.current = false;
     };
-  }, [roomId, username, navigate, videoType]);
+  }, [roomId, username, navigate, videoType, playerReady]);
 
   useEffect(() => {
     messagesEndRef.current?.scrollIntoView({ behavior: "smooth" });
@@ -187,15 +191,18 @@ function RoomPage() {
   const handleSetVideo = () => {
     if (!inputUrl.trim()) return;
 
-    const type = detectVideoType(inputUrl.trim());
+    const cleanUrl = inputUrl.trim();
+    const type = detectVideoType(cleanUrl);
 
-    setVideoUrl(inputUrl.trim());
+    setVideoUrl(cleanUrl);
     setVideoType(type);
     setPlaying(false);
+    setPlayerReady(false);
+    lastProgressEmitRef.current = -1;
 
     socket.emit("set_video", {
       roomId,
-      videoUrl: inputUrl.trim(),
+      videoUrl: cleanUrl,
       videoType: type
     });
   };
@@ -227,6 +234,10 @@ function RoomPage() {
     });
   };
 
+  const handleYoutubeReady = () => {
+    setPlayerReady(true);
+  };
+
   const handleYoutubePlay = () => {
     if (!isHost || !playerRef.current) return;
 
@@ -256,9 +267,11 @@ function RoomPage() {
   const handleYoutubeProgress = (state) => {
     if (!isHost || !playerRef.current || !playing) return;
 
-    const currentTime = state.playedSeconds || 0;
+    const currentTime = Math.floor(state.playedSeconds || 0);
 
-    if (Math.floor(currentTime) % 5 === 0) {
+    if (currentTime !== lastProgressEmitRef.current && currentTime % 3 === 0) {
+      lastProgressEmitRef.current = currentTime;
+
       socket.emit("seek_video", {
         roomId,
         currentTime
@@ -299,23 +312,32 @@ function RoomPage() {
         <div className="player-wrap">
           <ReactPlayer
             ref={playerRef}
-            src={videoUrl}
+            url={videoUrl}
             playing={playing}
             controls={true}
             width="100%"
             height="100%"
-            playsInline={true}
+            playsinline={true}
+            muted={false}
+            pip={false}
+            stopOnUnmount={false}
             config={{
               youtube: {
                 playerVars: {
+                  autoplay: 0,
                   modestbranding: 1,
-                  rel: 0
+                  rel: 0,
+                  fs: 1
                 }
               }
             }}
+            onReady={handleYoutubeReady}
             onPlay={handleYoutubePlay}
             onPause={handleYoutubePause}
             onProgress={handleYoutubeProgress}
+            onError={(error) => {
+              console.error("YouTube player error:", error);
+            }}
           />
         </div>
       );
@@ -355,7 +377,8 @@ function RoomPage() {
         <div>
           <h1 className="room-title">LAUD</h1>
           <p className="room-subtitle">
-            Комната: {roomId} <span className="room-dot">•</span> Вы: {username} {isHost ? "• Хост" : ""}
+            Комната: {roomId} <span className="room-dot">•</span> Вы: {username}{" "}
+            {isHost ? "• Хост" : ""}
           </p>
         </div>
 
