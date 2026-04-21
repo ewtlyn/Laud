@@ -84,6 +84,8 @@ function RoomPage() {
     };
 
     const onVideoState = (state) => {
+      console.log("SERVER VIDEO STATE", state);
+
       const nextType = state.videoType || "file";
 
       setVideoUrl(state.videoUrl || "");
@@ -176,6 +178,10 @@ function RoomPage() {
   }, [roomId, username, navigate, videoType]);
 
   useEffect(() => {
+    console.log("VIDEO STATE CHANGED", { videoUrl, videoType });
+  }, [videoUrl, videoType]);
+
+  useEffect(() => {
     messagesEndRef.current?.scrollIntoView({ behavior: "smooth" });
   }, [messages]);
 
@@ -184,6 +190,14 @@ function RoomPage() {
 
     const cleanUrl = inputUrl.trim();
     const type = detectVideoType(cleanUrl);
+
+    console.log("SET VIDEO CLICK", {
+      cleanUrl,
+      type,
+      isHost,
+      roomId,
+      socketId: socket.id
+    });
 
     setVideoUrl(cleanUrl);
     setVideoType(type);
@@ -225,7 +239,9 @@ function RoomPage() {
     });
   };
 
-  const handleYoutubeReady = () => {};
+  const handleYoutubeReady = () => {
+    console.log("YOUTUBE READY");
+  };
 
   const handleYoutubePlay = (currentTime) => {
     if (!isHost) return;
@@ -340,6 +356,9 @@ function RoomPage() {
             Комната: {roomId} <span className="room-dot">•</span> Вы: {username}{" "}
             {isHost ? "• Хост" : ""}
           </p>
+          <div className="hint-text">
+            debug: host={String(isHost)} | type={videoType} | url={videoUrl || "EMPTY"}
+          </div>
         </div>
 
         <div className="room-header-buttons">
