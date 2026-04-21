@@ -1,7 +1,7 @@
 import { useEffect, useMemo, useRef, useState } from "react";
 import { useLocation, useNavigate, useParams } from "react-router-dom";
 import { io } from "socket.io-client";
-import ReactPlayer from "react-player";
+import YouTubeSyncPlayer from "../components/YouTubeSyncPlayer";
 
 const SERVER_URL = import.meta.env.VITE_SERVER_URL || "http://localhost:5001";
 
@@ -38,7 +38,6 @@ function RoomPage() {
 
   const joinedRef = useRef(false);
   const htmlVideoRef = useRef(null);
-  const playerRef = useRef(null);
   const messagesEndRef = useRef(null);
   const lastProgressEmitRef = useRef(-1);
 
@@ -46,12 +45,12 @@ function RoomPage() {
   const [hostId, setHostId] = useState("");
   const [videoUrl, setVideoUrl] = useState("");
   const [videoType, setVideoType] = useState("file");
+  const [youtubeSeekTime, setYoutubeSeekTime] = useState(0);
   const [inputUrl, setInputUrl] = useState("");
   const [messages, setMessages] = useState([]);
   const [message, setMessage] = useState("");
   const [copyText, setCopyText] = useState("Скопировать ссылку");
   const [playing, setPlaying] = useState(false);
-  const [playerReady, setPlayerReady] = useState(false);
 
   const isHost = useMemo(() => socket.id === hostId, [hostId]);
 
@@ -101,10 +100,8 @@ function RoomPage() {
         }
       }
 
-      if (nextType === "youtube" && playerRef.current && playerReady) {
-        try {
-          playerRef.current.seekTo(state.currentTime || 0, "seconds");
-        } catch {}
+      if (nextType === "youtube") {
+        setYoutubeSeekTime(state.currentTime || 0);
       }
     };
 
@@ -114,10 +111,8 @@ function RoomPage() {
         htmlVideoRef.current.play().catch(() => {});
       }
 
-      if (videoType === "youtube" && playerRef.current) {
-        try {
-          playerRef.current.seekTo(currentTime || 0, "seconds");
-        } catch {}
+      if (videoType === "youtube") {
+        setYoutubeSeekTime(currentTime || 0);
         setPlaying(true);
       }
     };
@@ -128,10 +123,8 @@ function RoomPage() {
         htmlVideoRef.current.pause();
       }
 
-      if (videoType === "youtube" && playerRef.current) {
-        try {
-          playerRef.current.seekTo(currentTime || 0, "seconds");
-        } catch {}
+      if (videoType === "youtube") {
+        setYoutubeSeekTime(currentTime || 0);
         setPlaying(false);
       }
     };
@@ -141,10 +134,8 @@ function RoomPage() {
         htmlVideoRef.current.currentTime = currentTime || 0;
       }
 
-      if (videoType === "youtube" && playerRef.current) {
-        try {
-          playerRef.current.seekTo(currentTime || 0, "seconds");
-        } catch {}
+      if (videoType === "youtube") {
+        setYoutubeSeekTime(currentTime || 0);
       }
     };
 
@@ -182,7 +173,7 @@ function RoomPage() {
       socket.emit("leave_room", { roomId });
       joinedRef.current = false;
     };
-}, [roomId, username, navigate, videoType]);
+  }, [roomId, username, navigate, videoType]);
 
   useEffect(() => {
     messagesEndRef.current?.scrollIntoView({ behavior: "smooth" });
@@ -197,7 +188,7 @@ function RoomPage() {
     setVideoUrl(cleanUrl);
     setVideoType(type);
     setPlaying(false);
-    setPlayerReady(false);
+    setYoutubeSeekTime(0);
     lastProgressEmitRef.current = -1;
 
     socket.emit("set_video", {
@@ -234,16 +225,10 @@ function RoomPage() {
     });
   };
 
-  const handleYoutubeReady = () => {
-    setPlayerReady(true);
-  };
+  const handleYoutubeReady = () => {};
 
-  const handleYoutubePlay = () => {
-    if (!isHost || !playerRef.current) return;
-
-    const currentTime = playerRef.current.getCurrentTime
-      ? playerRef.current.getCurrentTime()
-      : 0;
+  const handleYoutubePlay = (currentTime) => {
+    if (!isHost) return;
 
     socket.emit("play_video", {
       roomId,
@@ -251,12 +236,8 @@ function RoomPage() {
     });
   };
 
-  const handleYoutubePause = () => {
-    if (!isHost || !playerRef.current) return;
-
-    const currentTime = playerRef.current.getCurrentTime
-      ? playerRef.current.getCurrentTime()
-      : 0;
+  const handleYoutubePause = (currentTime) => {
+    if (!isHost) return;
 
     socket.emit("pause_video", {
       roomId,
@@ -264,17 +245,17 @@ function RoomPage() {
     });
   };
 
-  const handleYoutubeProgress = (state) => {
-    if (!isHost || !playerRef.current || !playing) return;
+  const handleYoutubeProgress = (currentTime) => {
+    if (!isHost || !playing) return;
 
-    const currentTime = Math.floor(state.playedSeconds || 0);
+    const rounded = Math.floor(currentTime || 0);
 
-    if (currentTime !== lastProgressEmitRef.current && currentTime % 3 === 0) {
-      lastProgressEmitRef.current = currentTime;
+    if (rounded !== lastProgressEmitRef.current && rounded % 3 === 0) {
+      lastProgressEmitRef.current = rounded;
 
       socket.emit("seek_video", {
         roomId,
-        currentTime
+        currentTime: rounded
       });
     }
   };
@@ -308,30 +289,19 @@ function RoomPage() {
     }
 
     if (videoType === "youtube") {
-  return (
-    <div className="player-wrap">
-      <ReactPlayer
-        ref={playerRef}
-        src={videoUrl}
-        playing={playing}
-        controls={true}
-        width="100%"
-        height="100%"
-        playsinline={true}
-        muted={false}
-        pip={false}
-        stopOnUnmount={false}
-        onReady={handleYoutubeReady}
-        onPlay={handleYoutubePlay}
-        onPause={handleYoutubePause}
-        onProgress={handleYoutubeProgress}
-        onError={(error) => {
-          console.error("YouTube player error:", error);
-        }}
-      />
-    </div>
-  );
-}
+      return (
+        <YouTubeSyncPlayer
+          videoUrl={videoUrl}
+          playing={playing}
+          seekToSeconds={youtubeSeekTime}
+          isHost={isHost}
+          onReady={handleYoutubeReady}
+          onPlay={handleYoutubePlay}
+          onPause={handleYoutubePause}
+          onProgress={handleYoutubeProgress}
+        />
+      );
+    }
 
     if (videoType === "vk") {
       return (
