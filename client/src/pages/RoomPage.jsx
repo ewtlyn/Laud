@@ -3,7 +3,9 @@ import { useLocation, useNavigate, useParams } from "react-router-dom";
 import { io } from "socket.io-client";
 import ReactPlayer from "react-player";
 
-const socket = io("http://localhost:5001", {
+const SERVER_URL = import.meta.env.VITE_SERVER_URL;
+
+const socket = io(SERVER_URL, {
   transports: ["websocket", "polling"]
 });
 
