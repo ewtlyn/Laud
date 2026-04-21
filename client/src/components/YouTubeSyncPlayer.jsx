@@ -98,34 +98,42 @@ export default function YouTubeSyncPlayer({
       }
 
       playerRef.current = new YT.Player(containerRef.current, {
-        videoId,
-        width: "100%",
-        height: "100%",
-        playerVars: {
-          rel: 0,
-          modestbranding: 1,
-          playsinline: 1
-        },
-        events: {
-          onReady: () => {
-            if (!isMounted) return;
-            onReadyRef.current?.();
-          },
-          onStateChange: (event) => {
-            if (suppressEventsRef.current) return;
+  videoId,
+  width: "100%",
+  height: "100%",
+  host: "https://www.youtube.com",
+  playerVars: {
+    autoplay: 0,
+    controls: 1,
+    rel: 0,
+    modestbranding: 1,
+    playsinline: 1,
+    enablejsapi: 1,
+    origin: window.location.origin
+  },
+  events: {
+    onReady: () => {
+      if (!isMounted) return;
+      onReadyRef.current?.();
+    },
+    onStateChange: (event) => {
+      if (suppressEventsRef.current) return;
 
-            if (event.data === YT.PlayerState.PLAYING) {
-              const currentTime = playerRef.current?.getCurrentTime?.() || 0;
-              onPlayRef.current?.(currentTime);
-            }
+      if (event.data === YT.PlayerState.PLAYING) {
+        const currentTime = playerRef.current?.getCurrentTime?.() || 0;
+        onPlayRef.current?.(currentTime);
+      }
 
-            if (event.data === YT.PlayerState.PAUSED) {
-              const currentTime = playerRef.current?.getCurrentTime?.() || 0;
-              onPauseRef.current?.(currentTime);
-            }
-          }
-        }
-      });
+      if (event.data === YT.PlayerState.PAUSED) {
+        const currentTime = playerRef.current?.getCurrentTime?.() || 0;
+        onPauseRef.current?.(currentTime);
+      }
+    },
+    onError: (event) => {
+      console.error("YT iframe error code:", event.data);
+    }
+  }
+});
     });
 
     return () => {
