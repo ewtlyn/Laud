@@ -308,45 +308,35 @@ function RoomPage() {
     }
 
     if (videoType === "youtube") {
-      return (
-        <div className="player-wrap">
-          <ReactPlayer
-            ref={playerRef}
-            url={videoUrl}
-            playing={playing}
-            controls={true}
-            width="100%"
-            height="100%"
-            playsinline={true}
-            muted={false}
-            pip={false}
-            stopOnUnmount={false}
-            config={{
-              youtube: {
-                playerVars: {
-                  autoplay: 0,
-                  modestbranding: 1,
-                  rel: 0,
-                  fs: 1
-                }
-              }
-            }}
-            onReady={handleYoutubeReady}
-            onPlay={handleYoutubePlay}
-            onPause={handleYoutubePause}
-            onProgress={handleYoutubeProgress}
-            onError={(error) => {
-              console.error("YouTube player error:", error);
-            }}
-          />
-        </div>
-      );
-    }
+  return (
+    <div className="player-wrap">
+      <ReactPlayer
+        ref={playerRef}
+        src={videoUrl}
+        playing={playing}
+        controls={true}
+        width="100%"
+        height="100%"
+        playsinline={true}
+        muted={false}
+        pip={false}
+        stopOnUnmount={false}
+        onReady={handleYoutubeReady}
+        onPlay={handleYoutubePlay}
+        onPause={handleYoutubePause}
+        onProgress={handleYoutubeProgress}
+        onError={(error) => {
+          console.error("YouTube player error:", error);
+        }}
+      />
+    </div>
+  );
+}
 
     if (videoType === "vk") {
       return (
         <iframe
-          url={videoUrl}
+          src={videoUrl}
           width="100%"
           height="500"
           allow="autoplay; encrypted-media; fullscreen; picture-in-picture"
@@ -361,7 +351,7 @@ function RoomPage() {
     return (
       <video
         ref={htmlVideoRef}
-        url={videoUrl}
+        src={videoUrl}
         controls={isHost}
         onPlay={handleFilePlay}
         onPause={handleFilePause}
