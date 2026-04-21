@@ -62,6 +62,27 @@ export default function YouTubeSyncPlayer({
   const lastAppliedSeekRef = useRef(-1);
   const suppressEventsRef = useRef(false);
 
+  const onReadyRef = useRef(onReady);
+  const onPlayRef = useRef(onPlay);
+  const onPauseRef = useRef(onPause);
+  const onProgressRef = useRef(onProgress);
+
+  useEffect(() => {
+    onReadyRef.current = onReady;
+  }, [onReady]);
+
+  useEffect(() => {
+    onPlayRef.current = onPlay;
+  }, [onPlay]);
+
+  useEffect(() => {
+    onPauseRef.current = onPause;
+  }, [onPause]);
+
+  useEffect(() => {
+    onProgressRef.current = onProgress;
+  }, [onProgress]);
+
   useEffect(() => {
     let isMounted = true;
 
@@ -88,19 +109,19 @@ export default function YouTubeSyncPlayer({
         events: {
           onReady: () => {
             if (!isMounted) return;
-            onReady?.();
+            onReadyRef.current?.();
           },
           onStateChange: (event) => {
             if (suppressEventsRef.current) return;
 
             if (event.data === YT.PlayerState.PLAYING) {
               const currentTime = playerRef.current?.getCurrentTime?.() || 0;
-              onPlay?.(currentTime);
+              onPlayRef.current?.(currentTime);
             }
 
             if (event.data === YT.PlayerState.PAUSED) {
               const currentTime = playerRef.current?.getCurrentTime?.() || 0;
-              onPause?.(currentTime);
+              onPauseRef.current?.(currentTime);
             }
           }
         }
@@ -120,7 +141,7 @@ export default function YouTubeSyncPlayer({
         playerRef.current = null;
       }
     };
-  }, [videoUrl, onReady, onPlay, onPause]);
+  }, [videoUrl]);
 
   useEffect(() => {
     const player = playerRef.current;
@@ -164,7 +185,7 @@ export default function YouTubeSyncPlayer({
 
     progressIntervalRef.current = setInterval(() => {
       const currentTime = playerRef.current?.getCurrentTime?.() || 0;
-      onProgress?.(currentTime);
+      onProgressRef.current?.(currentTime);
     }, 1000);
 
     return () => {
@@ -173,7 +194,7 @@ export default function YouTubeSyncPlayer({
         progressIntervalRef.current = null;
       }
     };
-  }, [isHost, onProgress, videoUrl]);
+  }, [isHost, videoUrl]);
 
   return (
     <div className="player-wrap">
