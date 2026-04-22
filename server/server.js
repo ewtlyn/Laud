@@ -23,7 +23,7 @@ const io = new Server(server, {
 });
 
 const rooms = {};
-const DISCONNECT_GRACE_MS = 15000;
+const DISCONNECT_GRACE_MS = 30000;
 const MAX_MESSAGES = 100;
 
 app.get("/", (req, res) => {
@@ -194,9 +194,41 @@ io.on("connection", (socket) => {
       messages: room.messages
     });
 
-    const joinMsg = createSystemMessage(`${safeUsername} присоединился к комнате`);
-    addMessage(room, joinMsg);
-    io.to(roomId).emit("receive_message", joinMsg);
+let user = room.users.find((u) => u.clientId === safeClientId);
+const isReconnect = Boolean(user);
+
+if (user) {
+  user.id = socket.id;
+  user.username = safeUsername;
+  user.isOnline = true;
+} else {
+  user = {
+    id: socket.id,
+    clientId: safeClientId,
+    username: safeUsername,
+    isOnline: true
+  };
+  room.users.push(user);
+}
+
+if (!room.hostClientId) {
+  room.hostClientId = safeClientId;
+}
+
+emitRoomState(roomId);
+
+socket.emit("room_snapshot", {
+  users: room.users,
+  hostClientId: room.hostClientId,
+  videoState: room.videoState,
+  messages: room.messages
+});
+
+if (!isReconnect) {
+  const joinMsg = createSystemMessage(`${safeUsername} присоединился к комнате`);
+  addMessage(room, joinMsg);
+  io.to(roomId).emit("receive_message", joinMsg);
+}
 
     ack?.({ ok: true });
     console.log(`${safeUsername} вошел в комнату ${roomId}`);

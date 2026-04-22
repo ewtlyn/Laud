@@ -329,8 +329,7 @@ function RoomPage() {
         socket.emit("leave_room");
       }
     };
-  }, [roomId, username, navigate, isHost, videoType, playing, videoUrl]);
-
+}, [roomId, username, navigate]);
   useEffect(() => {
     messagesEndRef.current?.scrollIntoView({ behavior: "smooth" });
   }, [messages]);
@@ -555,13 +554,13 @@ function RoomPage() {
       <div className="mobile-backdrop" onClick={() => setSidebarOpen(false)} />
     )}
 
-    <div className="room-header">
-      <div>
+    <div className="room-header cleaner-header">
+      <div className="room-header-left">
         <div className="room-title-row">
           <h1 className="room-title">LAUD</h1>
 
           <button
-            className="app-button app-button-dark mobile-drawer-toggle"
+            className="app-button app-button-dark mobile-drawer-toggle compact-icon-button"
             onClick={() => setSidebarOpen(true)}
             type="button"
           >
@@ -574,37 +573,36 @@ function RoomPage() {
           {isHost ? "• Хост" : ""}
         </p>
 
-        <div className="hint-text">
+        <div className="hint-text status-text">
           {isConnected ? "Онлайн" : "Переподключение..."}
         </div>
       </div>
 
-      <div className="room-header-buttons">
-        <button className="app-button app-button-dark" onClick={copyInviteLink}>
-          {copyText}
-        </button>
-        <button className="app-button app-button-light" onClick={handleLeave}>
+      <div className="room-header-buttons small-header-actions">
+        <button className="app-button app-button-light exit-button" onClick={handleLeave}>
           Выйти
         </button>
       </div>
     </div>
 
-    <div className="room-layout">
+    <div className="room-layout improved-room-layout">
       <div className="room-main">
-        <div className="panel">
-          <h2 className="panel-title">Плеер</h2>
+        <div className="panel player-panel">
+          <div className="player-panel-top">
+            <h2 className="panel-title">Плеер</h2>
+          </div>
 
-          <div className="control-row">
+          <div className="video-input-row compact-video-input-row">
             <input
-              className="app-input"
+              className="app-input compact-video-input"
               type="text"
-              placeholder="mp4 / YouTube / VK embed"
+              placeholder="Вставь ссылку на видео"
               value={inputUrl}
               onChange={(e) => setInputUrl(e.target.value)}
               disabled={!isHost}
             />
             <button
-              className="app-button app-button-light"
+              className="app-button app-button-light compact-set-button"
               onClick={handleSetVideo}
               disabled={!isHost}
             >
@@ -612,17 +610,17 @@ function RoomPage() {
             </button>
           </div>
 
-          <div className="hint-text">
+          <div className="hint-text compact-hint">
             Для VK вставляй embed-ссылку вида video_ext.php
           </div>
 
-          {renderPlayer()}
+          <div className="big-player-wrap">{renderPlayer()}</div>
         </div>
 
-        <div className="panel mobile-chat-panel">
+        <div className="panel mobile-chat-panel chat-panel">
           <h2 className="panel-title">Чат</h2>
 
-          <div className="chat-box">
+          <div className="chat-box improved-chat-box">
             {messages.map((msg) => {
               const isSystem = msg.username === "Система" || msg.system;
 
@@ -642,7 +640,7 @@ function RoomPage() {
             <div ref={messagesEndRef} />
           </div>
 
-          <div className="control-row chat-row">
+          <div className="control-row chat-row compact-chat-row">
             <input
               className="app-input"
               type="text"
@@ -653,7 +651,7 @@ function RoomPage() {
                 if (e.key === "Enter") sendMessage();
               }}
             />
-            <button className="app-button app-button-light" onClick={sendMessage}>
+            <button className="app-button app-button-light compact-send-button" onClick={sendMessage}>
               Отправить
             </button>
           </div>
@@ -665,11 +663,11 @@ function RoomPage() {
           sidebarOpen ? "mobile-open" : "mobile-hidden"
         }`}
       >
-        <div className="panel mobile-sidebar-panel">
+        <div className="panel mobile-sidebar-panel participants-panel">
           <div className="sidebar-panel-header">
             <h2 className="panel-title">Участники</h2>
             <button
-              className="app-button app-button-dark mobile-close-button"
+              className="app-button app-button-dark mobile-close-button compact-icon-button"
               onClick={() => setSidebarOpen(false)}
               type="button"
             >

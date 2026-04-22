@@ -564,3 +564,151 @@ input {
     z-index: 90;
   }
 }
+
+.cleaner-header {
+  align-items: center;
+  margin-bottom: 16px;
+}
+
+.room-header-left {
+  min-width: 0;
+}
+
+.status-text {
+  margin-top: 4px;
+  margin-bottom: 0;
+}
+
+.small-header-actions {
+  align-items: center;
+}
+
+.exit-button {
+  padding: 10px 16px;
+  min-width: 110px;
+  font-size: 14px;
+  border-radius: 14px;
+}
+
+.compact-icon-button {
+  width: 46px;
+  height: 46px;
+  padding: 0;
+  border-radius: 16px;
+}
+
+.improved-room-layout {
+  align-items: start;
+}
+
+.player-panel {
+  padding: 18px;
+}
+
+.player-panel-top {
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  margin-bottom: 12px;
+}
+
+.compact-video-input-row {
+  display: grid;
+  grid-template-columns: minmax(0, 1fr) 150px;
+  gap: 10px;
+  margin-bottom: 10px;
+}
+
+.compact-video-input {
+  padding: 12px 14px;
+  font-size: 14px;
+  border-radius: 14px;
+}
+
+.compact-set-button {
+  padding: 12px 14px;
+  font-size: 14px;
+  border-radius: 14px;
+}
+
+.compact-hint {
+  margin-bottom: 12px;
+  font-size: 13px;
+}
+
+.big-player-wrap .player-wrap {
+  aspect-ratio: 16 / 9;
+  min-height: 360px;
+}
+
+.big-player-wrap .player-placeholder {
+  min-height: 360px;
+}
+
+.chat-panel {
+  padding: 18px;
+}
+
+.improved-chat-box {
+  height: 260px;
+}
+
+.compact-chat-row {
+  display: grid;
+  grid-template-columns: minmax(0, 1fr) 140px;
+  gap: 10px;
+  align-items: center;
+}
+
+.compact-send-button {
+  padding: 10px 14px;
+  font-size: 14px;
+  border-radius: 14px;
+}
+
+.participants-panel {
+  padding: 18px;
+}
+
+@media (min-width: 641px) {
+  .improved-room-layout {
+    display: grid;
+    grid-template-columns: minmax(0, 1fr) 280px;
+    gap: 18px;
+  }
+}
+
+@media (max-width: 640px) {
+  .cleaner-header {
+    align-items: flex-start;
+    gap: 12px;
+  }
+
+  .small-header-actions {
+    width: 100%;
+  }
+
+  .exit-button {
+    width: 100%;
+    min-width: 0;
+  }
+
+  .compact-video-input-row,
+  .compact-chat-row {
+    grid-template-columns: 1fr;
+  }
+
+  .compact-set-button,
+  .compact-send-button {
+    width: 100%;
+  }
+
+  .big-player-wrap .player-wrap,
+  .big-player-wrap .player-placeholder {
+    min-height: 240px;
+  }
+
+  .improved-chat-box {
+    height: 220px;
+  }
+}
