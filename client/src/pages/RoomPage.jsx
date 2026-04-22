@@ -209,58 +209,54 @@ function RoomPage() {
     });
   };
 
-  const handleFilePlay = () => {
-    if (!htmlVideoRef.current || !isHost) return;
+const handleFilePlay = () => {
+  if (!htmlVideoRef.current) return;
 
-    socket.emit("play_video", {
-      roomId,
-      currentTime: htmlVideoRef.current.currentTime
-    });
-  };
+  socket.emit("play_video", {
+    roomId,
+    currentTime: htmlVideoRef.current.currentTime
+  });
+};
 
-  const handleFilePause = () => {
-    if (!htmlVideoRef.current || !isHost) return;
+const handleFilePause = () => {
+  if (!htmlVideoRef.current) return;
 
-    socket.emit("pause_video", {
-      roomId,
-      currentTime: htmlVideoRef.current.currentTime
-    });
-  };
+  socket.emit("pause_video", {
+    roomId,
+    currentTime: htmlVideoRef.current.currentTime
+  });
+};
 
-  const handleFileSeeked = () => {
-    if (!htmlVideoRef.current || !isHost) return;
+const handleFileSeeked = () => {
+  if (!htmlVideoRef.current) return;
 
-    socket.emit("seek_video", {
-      roomId,
-      currentTime: htmlVideoRef.current.currentTime
-    });
-  };
+  socket.emit("seek_video", {
+    roomId,
+    currentTime: htmlVideoRef.current.currentTime
+  });
+};
 
   const handleYoutubeReady = () => {
     console.log("YOUTUBE READY");
   };
 
-  const handleYoutubePlay = (currentTime) => {
-    if (!isHost) return;
+const handleYoutubePlay = (currentTime) => {
+  socket.emit("play_video", {
+    roomId,
+    currentTime
+  });
+};
 
-    socket.emit("play_video", {
-      roomId,
-      currentTime
-    });
-  };
+const handleYoutubePause = (currentTime) => {
+  socket.emit("pause_video", {
+    roomId,
+    currentTime
+  });
+};
 
-  const handleYoutubePause = (currentTime) => {
-    if (!isHost) return;
-
-    socket.emit("pause_video", {
-      roomId,
-      currentTime
-    });
-  };
-
-  const handleYoutubeProgress = (currentTime) => {
-    if (!isHost || !playing) return;
-
+const handleYoutubeProgress = (currentTime) => {
+  if (!playing) return;
+  
     const rounded = Math.floor(currentTime || 0);
 
     if (rounded !== lastProgressEmitRef.current && rounded % 3 === 0) {
@@ -333,14 +329,14 @@ function RoomPage() {
 
     return (
       <video
-        ref={htmlVideoRef}
-        src={videoUrl}
-        controls={isHost}
-        onPlay={handleFilePlay}
-        onPause={handleFilePause}
-        onSeeked={handleFileSeeked}
-        className="player-video"
-      />
+  ref={htmlVideoRef}
+  src={videoUrl}
+  controls={true}
+  onPlay={handleFilePlay}
+  onPause={handleFilePause}
+  onSeeked={handleFileSeeked}
+  className="player-video"
+/>
     );
   };
 
