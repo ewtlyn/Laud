@@ -54,9 +54,9 @@ function HomePage() {
           onChange={(e) => setUsername(e.target.value)}
         />
 
-        <button className="app-button app-button-primary" onClick={createRoom}>
-          Создать комнату
-        </button>
+<button className="primary-button" onClick={createRoom}>
+  Создать комнату
+</button>
 
         <div className="home-divider">или</div>
 
@@ -68,9 +68,9 @@ function HomePage() {
           onChange={(e) => setRoomId(e.target.value)}
         />
 
-        <button className="app-button app-button-secondary" onClick={joinRoom}>
-          Войти
-        </button>
+<button className="secondary-button" onClick={joinRoom}>
+  Войти
+</button>
       </div>
     </div>
   );

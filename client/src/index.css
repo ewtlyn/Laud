@@ -124,8 +124,13 @@ input {
   display: flex;
   justify-content: space-between;
   align-items: flex-start;
-  gap: 18px;
-  margin-bottom: 20px;
+  gap: 12px;
+  margin-bottom: 6px;
+}
+.room-topbar-left {
+  display: flex;
+  flex-direction: column;
+  gap: 0;
 }
 
 .room-topbar-left {
@@ -135,8 +140,8 @@ input {
 .brand-row {
   display: flex;
   align-items: center;
-  gap: 12px;
-  margin-bottom: 8px;
+  gap: 10px;
+  margin-bottom: 4px;
 }
 
 .room-brand {
@@ -152,7 +157,7 @@ input {
   gap: 6px;
   color: #ababab;
   font-size: 15px;
-  margin-bottom: 8px;
+  margin-bottom: 4px;
 }
 
 .room-meta-sep {
@@ -565,4 +570,33 @@ input {
     padding: 10px 12px;
     border-radius: 12px;
   }
+
+  .room-topbar {
+  gap: 8px;
+  margin-bottom: 4px;
+}
+
+.brand-row {
+  margin-bottom: 2px;
+}
+
+.room-meta {
+  margin-bottom: 2px;
+}
+
+.room-status {
+  margin-top: 0;
+}
+}
+.home-card .primary-button,
+.home-card .secondary-button {
+  width: 100%;
+}
+
+.home-card .primary-button {
+  margin-top: 14px;
+}
+
+.home-card .secondary-button {
+  margin-top: 14px;
 }
