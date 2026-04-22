@@ -5,9 +5,7 @@ import YouTubeSyncPlayer from "../components/YouTubeSyncPlayer";
 
 const SERVER_URL = import.meta.env.VITE_SERVER_URL || "http://localhost:5001";
 
-const socket = io(SERVER_URL, {
-  transports: ["websocket", "polling"]
-});
+const socket = io(SERVER_URL);
 
 function detectVideoType(url) {
   if (!url) return "file";

@@ -1,4 +1,4 @@
-import { useEffect, useId, useRef } from "react";
+import { useEffect, useRef } from "react";
 
 function extractVideoId(url) {
   try {
@@ -57,14 +57,12 @@ export default function YouTubeSyncPlayer({
   onPause,
   onProgress
 }) {
-  const reactId = useId();
-  const playerElementId = `yt-player-${reactId.replace(/[:]/g, "")}`;
-
-  const wrapperRef = useRef(null);
+  const mountRef = useRef(null);
   const playerRef = useRef(null);
   const progressIntervalRef = useRef(null);
   const lastAppliedSeekRef = useRef(-1);
   const suppressEventsRef = useRef(false);
+  const readyRef = useRef(false);
 
   const onReadyRef = useRef(onReady);
   const onPlayRef = useRef(onPlay);
@@ -89,50 +87,48 @@ export default function YouTubeSyncPlayer({
 
   useEffect(() => {
     let isMounted = true;
+    readyRef.current = false;
 
     const videoId = extractVideoId(videoUrl);
     console.log("YOUTUBE VIDEO ID", videoId);
 
-    if (!videoId) return;
+    if (!videoId || !mountRef.current) return;
 
     loadYouTubeApi().then((YT) => {
       console.log("YOUTUBE API LOADED", !!YT);
 
-      if (!isMounted) return;
+      if (!isMounted || !mountRef.current) return;
 
       try {
         if (playerRef.current) {
-          playerRef.current.destroy();
+          try {
+            playerRef.current.destroy();
+          } catch {}
           playerRef.current = null;
         }
 
-        const targetEl = document.getElementById(playerElementId);
-        console.log("YOUTUBE TARGET EL", !!targetEl, playerElementId);
+        mountRef.current.innerHTML = "";
+        const playerNode = document.createElement("div");
+        playerNode.style.width = "100%";
+        playerNode.style.height = "100%";
+        mountRef.current.appendChild(playerNode);
 
-        if (!targetEl) {
-          console.error("YOUTUBE TARGET NOT FOUND");
-          return;
-        }
-
-        targetEl.innerHTML = "";
-
-        playerRef.current = new YT.Player(playerElementId, {
-          videoId,
+        playerRef.current = new YT.Player(playerNode, {
           width: 640,
           height: 360,
-          host: "https://www.youtube.com",
+          videoId,
           playerVars: {
             autoplay: 0,
             controls: 1,
             rel: 0,
             modestbranding: 1,
             playsinline: 1,
-            enablejsapi: 1,
-            origin: window.location.origin
+            enablejsapi: 1
           },
           events: {
             onReady: () => {
               console.log("YOUTUBE PLAYER READY");
+              readyRef.current = true;
 
               try {
                 const iframe = playerRef.current?.getIframe?.();
@@ -146,7 +142,6 @@ export default function YouTubeSyncPlayer({
                 console.error("IFRAME STYLE ERROR", e);
               }
 
-              if (!isMounted) return;
               onReadyRef.current?.();
             },
             onStateChange: (event) => {
@@ -176,6 +171,7 @@ export default function YouTubeSyncPlayer({
 
     return () => {
       isMounted = false;
+      readyRef.current = false;
 
       if (progressIntervalRef.current) {
         clearInterval(progressIntervalRef.current);
@@ -189,11 +185,11 @@ export default function YouTubeSyncPlayer({
         playerRef.current = null;
       }
     };
-  }, [videoUrl, playerElementId]);
+  }, [videoUrl]);
 
   useEffect(() => {
     const player = playerRef.current;
-    if (!player) return;
+    if (!player || !readyRef.current) return;
 
     const roundedSeek = Math.floor(seekToSeconds || 0);
 
@@ -208,7 +204,7 @@ export default function YouTubeSyncPlayer({
       }
       setTimeout(() => {
         suppressEventsRef.current = false;
-      }, 250);
+      }, 300);
     }
 
     suppressEventsRef.current = true;
@@ -225,11 +221,11 @@ export default function YouTubeSyncPlayer({
 
     setTimeout(() => {
       suppressEventsRef.current = false;
-    }, 250);
+    }, 300);
   }, [playing, seekToSeconds]);
 
   useEffect(() => {
-    if (!isHost || !playerRef.current) return;
+    if (!isHost || !playerRef.current || !readyRef.current) return;
 
     if (progressIntervalRef.current) {
       clearInterval(progressIntervalRef.current);
@@ -253,9 +249,9 @@ export default function YouTubeSyncPlayer({
   }, [isHost, videoUrl]);
 
   return (
-    <div className="player-wrap" ref={wrapperRef}>
+    <div className="player-wrap">
       <div
-        id={playerElementId}
+        ref={mountRef}
         style={{
           width: "100%",
           height: "100%",
