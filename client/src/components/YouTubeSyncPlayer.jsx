@@ -117,14 +117,13 @@ export default function YouTubeSyncPlayer({
           width: 640,
           height: 360,
           videoId,
-          playerVars: {
-            autoplay: 0,
-            controls: 1,
-            rel: 0,
-            modestbranding: 1,
-            playsinline: 1,
-            enablejsapi: 1
-          },
+playerVars: {
+  autoplay: 0,
+  controls: 1,
+  rel: 0,
+  modestbranding: 1,
+  playsinline: 1
+},
           events: {
             onReady: () => {
               console.log("YOUTUBE PLAYER READY");
