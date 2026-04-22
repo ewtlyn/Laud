@@ -173,8 +173,7 @@ function RoomPage() {
       socket.emit("leave_room", { roomId });
       joinedRef.current = false;
     };
-  }, [roomId, username, navigate, videoType]);
-
+}, [roomId, username, navigate]);
   useEffect(() => {
     console.log("VIDEO STATE CHANGED", { videoUrl, videoType });
   }, [videoUrl, videoType]);
