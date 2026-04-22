@@ -32,6 +32,7 @@ function loadYouTubeApi() {
     if (!existingScript) {
       const script = document.createElement("script");
       script.src = "https://www.youtube.com/iframe_api";
+      script.async = true;
       document.body.appendChild(script);
     }
 
@@ -96,51 +97,69 @@ export default function YouTubeSyncPlayer({
 
       if (!isMounted || !containerRef.current) return;
 
-      if (playerRef.current) {
-        playerRef.current.destroy();
-        playerRef.current = null;
-      }
-
-      playerRef.current = new YT.Player(containerRef.current, {
-        videoId,
-        width: "100%",
-        height: "100%",
-        host: "https://www.youtube.com",
-        playerVars: {
-          autoplay: 0,
-          controls: 1,
-          rel: 0,
-          modestbranding: 1,
-          playsinline: 1,
-          enablejsapi: 1,
-          origin: window.location.origin
-        },
-        events: {
-          onReady: () => {
-            console.log("YOUTUBE PLAYER READY");
-            if (!isMounted) return;
-            onReadyRef.current?.();
-          },
-          onStateChange: (event) => {
-            console.log("YOUTUBE STATE", event.data);
-
-            if (suppressEventsRef.current) return;
-
-            if (event.data === YT.PlayerState.PLAYING) {
-              const currentTime = playerRef.current?.getCurrentTime?.() || 0;
-              onPlayRef.current?.(currentTime);
-            }
-
-            if (event.data === YT.PlayerState.PAUSED) {
-              const currentTime = playerRef.current?.getCurrentTime?.() || 0;
-              onPauseRef.current?.(currentTime);
-            }
-          },
-          onError: (event) => {
-            console.error("YT iframe error code:", event.data);
-          }
+      try {
+        if (playerRef.current) {
+          playerRef.current.destroy();
+          playerRef.current = null;
         }
-      });
+
+        containerRef.current.innerHTML = "";
+
+        playerRef.current = new YT.Player(containerRef.current, {
+          videoId,
+          width: 640,
+          height: 360,
+          host: "https://www.youtube.com",
+          playerVars: {
+            autoplay: 0,
+            controls: 1,
+            rel: 0,
+            modestbranding: 1,
+            playsinline: 1,
+            enablejsapi: 1
+          },
+          events: {
+            onReady: () => {
+              console.log("YOUTUBE PLAYER READY");
+
+              try {
+                const iframe = playerRef.current?.getIframe?.();
+                if (iframe) {
+                  iframe.style.width = "100%";
+                  iframe.style.height = "100%";
+                  iframe.style.border = "0";
+                  iframe.style.display = "block";
+                }
+              } catch (e) {
+                console.error("IFRAME STYLE ERROR", e);
+              }
+
+              if (!isMounted) return;
+              onReadyRef.current?.();
+            },
+            onStateChange: (event) => {
+              console.log("YOUTUBE STATE", event.data);
+
+              if (suppressEventsRef.current) return;
+
+              if (event.data === YT.PlayerState.PLAYING) {
+                const currentTime = playerRef.current?.getCurrentTime?.() || 0;
+                onPlayRef.current?.(currentTime);
+              }
+
+              if (event.data === YT.PlayerState.PAUSED) {
+                const currentTime = playerRef.current?.getCurrentTime?.() || 0;
+                onPauseRef.current?.(currentTime);
+              }
+            },
+            onError: (event) => {
+              console.error("YT iframe error code:", event.data);
+            }
+          }
+        });
+      } catch (error) {
+        console.error("YOUTUBE PLAYER CREATE ERROR", error);
+      }
     });
 
     return () => {
@@ -152,7 +171,9 @@ export default function YouTubeSyncPlayer({
       }
 
       if (playerRef.current) {
-        playerRef.current.destroy();
+        try {
+          playerRef.current.destroy();
+        } catch {}
         playerRef.current = null;
       }
     };
@@ -170,7 +191,9 @@ export default function YouTubeSyncPlayer({
       suppressEventsRef.current = true;
       try {
         player.seekTo(seekToSeconds || 0, true);
-      } catch {}
+      } catch (e) {
+        console.error("YOUTUBE SEEK ERROR", e);
+      }
       setTimeout(() => {
         suppressEventsRef.current = false;
       }, 250);
@@ -184,7 +207,9 @@ export default function YouTubeSyncPlayer({
       } else {
         player.pauseVideo();
       }
-    } catch {}
+    } catch (e) {
+      console.error("YOUTUBE PLAY/PAUSE ERROR", e);
+    }
 
     setTimeout(() => {
       suppressEventsRef.current = false;
@@ -199,8 +224,12 @@ export default function YouTubeSyncPlayer({
     }
 
     progressIntervalRef.current = setInterval(() => {
-      const currentTime = playerRef.current?.getCurrentTime?.() || 0;
-      onProgressRef.current?.(currentTime);
+      try {
+        const currentTime = playerRef.current?.getCurrentTime?.() || 0;
+        onProgressRef.current?.(currentTime);
+      } catch (e) {
+        console.error("YOUTUBE PROGRESS ERROR", e);
+      }
     }, 1000);
 
     return () => {
