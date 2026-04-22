@@ -1,4 +1,4 @@
-import { useEffect, useRef } from "react";
+import { useEffect, useId, useRef } from "react";
 
 function extractVideoId(url) {
   try {
@@ -57,7 +57,10 @@ export default function YouTubeSyncPlayer({
   onPause,
   onProgress
 }) {
-  const containerRef = useRef(null);
+  const reactId = useId();
+  const playerElementId = `yt-player-${reactId.replace(/[:]/g, "")}`;
+
+  const wrapperRef = useRef(null);
   const playerRef = useRef(null);
   const progressIntervalRef = useRef(null);
   const lastAppliedSeekRef = useRef(-1);
@@ -90,12 +93,12 @@ export default function YouTubeSyncPlayer({
     const videoId = extractVideoId(videoUrl);
     console.log("YOUTUBE VIDEO ID", videoId);
 
-    if (!videoId || !containerRef.current) return;
+    if (!videoId) return;
 
     loadYouTubeApi().then((YT) => {
       console.log("YOUTUBE API LOADED", !!YT);
 
-      if (!isMounted || !containerRef.current) return;
+      if (!isMounted) return;
 
       try {
         if (playerRef.current) {
@@ -103,9 +106,17 @@ export default function YouTubeSyncPlayer({
           playerRef.current = null;
         }
 
-        containerRef.current.innerHTML = "";
+        const targetEl = document.getElementById(playerElementId);
+        console.log("YOUTUBE TARGET EL", !!targetEl, playerElementId);
 
-        playerRef.current = new YT.Player(containerRef.current, {
+        if (!targetEl) {
+          console.error("YOUTUBE TARGET NOT FOUND");
+          return;
+        }
+
+        targetEl.innerHTML = "";
+
+        playerRef.current = new YT.Player(playerElementId, {
           videoId,
           width: 640,
           height: 360,
@@ -116,7 +127,8 @@ export default function YouTubeSyncPlayer({
             rel: 0,
             modestbranding: 1,
             playsinline: 1,
-            enablejsapi: 1
+            enablejsapi: 1,
+            origin: window.location.origin
           },
           events: {
             onReady: () => {
@@ -177,7 +189,7 @@ export default function YouTubeSyncPlayer({
         playerRef.current = null;
       }
     };
-  }, [videoUrl]);
+  }, [videoUrl, playerElementId]);
 
   useEffect(() => {
     const player = playerRef.current;
@@ -241,9 +253,9 @@ export default function YouTubeSyncPlayer({
   }, [isHost, videoUrl]);
 
   return (
-    <div className="player-wrap">
+    <div className="player-wrap" ref={wrapperRef}>
       <div
-        ref={containerRef}
+        id={playerElementId}
         style={{
           width: "100%",
           height: "100%",
