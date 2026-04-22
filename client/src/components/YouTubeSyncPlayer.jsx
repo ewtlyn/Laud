@@ -1,4 +1,4 @@
-import { useEffect, useRef } from "react";
+import { useEffect, useRef, useState } from "react";
 
 function extractVideoId(url) {
   try {
@@ -19,7 +19,7 @@ function extractVideoId(url) {
 }
 
 function loadYouTubeApi() {
-  return new Promise((resolve) => {
+  return new Promise((resolve, reject) => {
     if (window.YT && window.YT.Player) {
       resolve(window.YT);
       return;
@@ -33,6 +33,7 @@ function loadYouTubeApi() {
       const script = document.createElement("script");
       script.src = "https://www.youtube.com/iframe_api";
       script.async = true;
+      script.onerror = () => reject(new Error("YOUTUBE_API_LOAD_FAILED"));
       document.body.appendChild(script);
     }
 
@@ -44,6 +45,12 @@ function loadYouTubeApi() {
       }
       resolve(window.YT);
     };
+
+    setTimeout(() => {
+      if (!(window.YT && window.YT.Player)) {
+        reject(new Error("YOUTUBE_API_TIMEOUT"));
+      }
+    }, 10000);
   });
 }
 
@@ -55,7 +62,8 @@ export default function YouTubeSyncPlayer({
   onReady,
   onPlay,
   onPause,
-  onProgress
+  onProgress,
+  onError
 }) {
   const mountRef = useRef(null);
   const playerRef = useRef(null);
@@ -63,11 +71,14 @@ export default function YouTubeSyncPlayer({
   const lastAppliedSeekRef = useRef(-1);
   const suppressEventsRef = useRef(false);
   const readyRef = useRef(false);
+  const lastProgressSentRef = useRef(0);
+  const [errorText, setErrorText] = useState("");
 
   const onReadyRef = useRef(onReady);
   const onPlayRef = useRef(onPlay);
   const onPauseRef = useRef(onPause);
   const onProgressRef = useRef(onProgress);
+  const onErrorRef = useRef(onError);
 
   useEffect(() => {
     onReadyRef.current = onReady;
@@ -86,20 +97,25 @@ export default function YouTubeSyncPlayer({
   }, [onProgress]);
 
   useEffect(() => {
+    onErrorRef.current = onError;
+  }, [onError]);
+
+  useEffect(() => {
     let isMounted = true;
     readyRef.current = false;
+    setErrorText("");
 
     const videoId = extractVideoId(videoUrl);
-    console.log("YOUTUBE VIDEO ID", videoId);
 
-    if (!videoId || !mountRef.current) return;
+    if (!videoId || !mountRef.current) {
+      setErrorText("Не удалось распознать ссылку YouTube.");
+      return;
+    }
 
-    loadYouTubeApi().then((YT) => {
-      console.log("YOUTUBE API LOADED", !!YT);
+    loadYouTubeApi()
+      .then((YT) => {
+        if (!isMounted || !mountRef.current) return;
 
-      if (!isMounted || !mountRef.current) return;
-
-      try {
         if (playerRef.current) {
           try {
             playerRef.current.destroy();
@@ -117,17 +133,19 @@ export default function YouTubeSyncPlayer({
           width: 640,
           height: 360,
           videoId,
-playerVars: {
-  autoplay: 0,
-  controls: 1,
-  rel: 0,
-  modestbranding: 1,
-  playsinline: 1
-},
+          playerVars: {
+            autoplay: 0,
+            controls: 1,
+            rel: 0,
+            modestbranding: 1,
+            playsinline: 1,
+            origin: window.location.origin,
+            enablejsapi: 1
+          },
           events: {
             onReady: () => {
-              console.log("YOUTUBE PLAYER READY");
               readyRef.current = true;
+              setErrorText("");
 
               try {
                 const iframe = playerRef.current?.getIframe?.();
@@ -137,15 +155,11 @@ playerVars: {
                   iframe.style.border = "0";
                   iframe.style.display = "block";
                 }
-              } catch (e) {
-                console.error("IFRAME STYLE ERROR", e);
-              }
+              } catch {}
 
               onReadyRef.current?.();
             },
             onStateChange: (event) => {
-              console.log("YOUTUBE STATE", event.data);
-
               if (suppressEventsRef.current) return;
 
               if (event.data === YT.PlayerState.PLAYING) {
@@ -159,14 +173,30 @@ playerVars: {
               }
             },
             onError: (event) => {
-              console.error("YT iframe error code:", event.data);
+              const errorMap = {
+                2: "Некорректный YouTube URL или videoId.",
+                5: "Ошибка YouTube HTML5 player.",
+                100: "Видео не найдено или удалено.",
+                101: "Встраивание этого видео запрещено владельцем.",
+                150: "Встраивание этого видео запрещено владельцем."
+              };
+
+              const message = errorMap[event.data] || `Ошибка YouTube: ${event.data}`;
+              setErrorText(message);
+              onErrorRef.current?.(message);
             }
           }
         });
-      } catch (error) {
-        console.error("YOUTUBE PLAYER CREATE ERROR", error);
-      }
-    });
+      })
+      .catch((error) => {
+        const message =
+          error?.message === "YOUTUBE_API_TIMEOUT"
+            ? "YouTube API не загрузился вовремя."
+            : "Не удалось загрузить YouTube player.";
+
+        setErrorText(message);
+        onErrorRef.current?.(message);
+      });
 
     return () => {
       isMounted = false;
@@ -190,20 +220,20 @@ playerVars: {
     const player = playerRef.current;
     if (!player || !readyRef.current) return;
 
-    const roundedSeek = Math.floor(seekToSeconds || 0);
+    const nextSeek = Number(seekToSeconds) || 0;
+    const roundedSeek = Math.floor(nextSeek);
 
     if (roundedSeek !== lastAppliedSeekRef.current) {
       lastAppliedSeekRef.current = roundedSeek;
-
       suppressEventsRef.current = true;
+
       try {
-        player.seekTo(seekToSeconds || 0, true);
-      } catch (e) {
-        console.error("YOUTUBE SEEK ERROR", e);
-      }
+        player.seekTo(nextSeek, true);
+      } catch {}
+
       setTimeout(() => {
         suppressEventsRef.current = false;
-      }, 300);
+      }, 250);
     }
 
     suppressEventsRef.current = true;
@@ -214,13 +244,11 @@ playerVars: {
       } else {
         player.pauseVideo();
       }
-    } catch (e) {
-      console.error("YOUTUBE PLAY/PAUSE ERROR", e);
-    }
+    } catch {}
 
     setTimeout(() => {
       suppressEventsRef.current = false;
-    }, 300);
+    }, 250);
   }, [playing, seekToSeconds]);
 
   useEffect(() => {
@@ -233,11 +261,14 @@ playerVars: {
     progressIntervalRef.current = setInterval(() => {
       try {
         const currentTime = playerRef.current?.getCurrentTime?.() || 0;
-        onProgressRef.current?.(currentTime);
-      } catch (e) {
-        console.error("YOUTUBE PROGRESS ERROR", e);
-      }
-    }, 1000);
+        const rounded = Math.floor(currentTime);
+
+        if (rounded !== lastProgressSentRef.current) {
+          lastProgressSentRef.current = rounded;
+          onProgressRef.current?.(currentTime);
+        }
+      } catch {}
+    }, 1500);
 
     return () => {
       if (progressIntervalRef.current) {
@@ -249,14 +280,18 @@ playerVars: {
 
   return (
     <div className="player-wrap">
-      <div
-        ref={mountRef}
-        style={{
-          width: "100%",
-          height: "100%",
-          background: "#000"
-        }}
-      />
+      {errorText ? (
+        <div className="player-error">{errorText}</div>
+      ) : (
+        <div
+          ref={mountRef}
+          style={{
+            width: "100%",
+            height: "100%",
+            background: "#000"
+          }}
+        />
+      )}
     </div>
   );
 }

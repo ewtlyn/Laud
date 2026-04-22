@@ -5,7 +5,14 @@ import YouTubeSyncPlayer from "../components/YouTubeSyncPlayer";
 
 const SERVER_URL = import.meta.env.VITE_SERVER_URL || "http://localhost:5001";
 
-const socket = io(SERVER_URL);
+const socket = io(SERVER_URL, {
+  autoConnect: true,
+  reconnection: true,
+  reconnectionAttempts: Infinity,
+  reconnectionDelay: 1000,
+  reconnectionDelayMax: 5000,
+  transports: ["websocket", "polling"]
+});
 
 function detectVideoType(url) {
   if (!url) return "file";
@@ -26,6 +33,19 @@ function detectVideoType(url) {
   return "file";
 }
 
+function getOrCreateClientId() {
+  const existing = localStorage.getItem("laud_client_id");
+  if (existing) return existing;
+
+  const created =
+    typeof crypto !== "undefined" && crypto.randomUUID
+      ? crypto.randomUUID()
+      : `client_${Date.now()}_${Math.random().toString(36).slice(2, 8)}`;
+
+  localStorage.setItem("laud_client_id", created);
+  return created;
+}
+
 function RoomPage() {
   const { roomId } = useParams();
   const location = useLocation();
@@ -34,13 +54,16 @@ function RoomPage() {
   const savedName = localStorage.getItem("laudUsername");
   const username = (location.state?.username || savedName || "Гость").trim();
 
-  const joinedRef = useRef(false);
+  const clientIdRef = useRef(getOrCreateClientId());
   const htmlVideoRef = useRef(null);
   const messagesEndRef = useRef(null);
-  const lastProgressEmitRef = useRef(-1);
+  const suppressHtmlEventsRef = useRef(false);
+  const leavingRef = useRef(false);
+  const lastFileSyncSecondRef = useRef(-1);
+  const reconnectSyncTimeoutRef = useRef(null);
 
   const [users, setUsers] = useState([]);
-  const [hostId, setHostId] = useState("");
+  const [hostClientId, setHostClientId] = useState("");
   const [videoUrl, setVideoUrl] = useState("");
   const [videoType, setVideoType] = useState("file");
   const [youtubeSeekTime, setYoutubeSeekTime] = useState(0);
@@ -49,8 +72,89 @@ function RoomPage() {
   const [message, setMessage] = useState("");
   const [copyText, setCopyText] = useState("Скопировать ссылку");
   const [playing, setPlaying] = useState(false);
+  const [sidebarOpen, setSidebarOpen] = useState(false);
+  const [playerError, setPlayerError] = useState("");
+  const [isConnected, setIsConnected] = useState(socket.connected);
 
-  const isHost = useMemo(() => socket.id === hostId, [hostId]);
+  const isHost = useMemo(() => {
+    return hostClientId === clientIdRef.current;
+  }, [hostClientId]);
+
+  const getExpectedTime = (state) => {
+    const baseTime = Number(state?.currentTime) || 0;
+    const lastActionAt =
+      Number(state?.lastActionAt) ||
+      Number(state?.emittedAt) ||
+      Date.now();
+    const isPlayingNow = Boolean(state?.isPlaying);
+
+    if (!isPlayingNow) return baseTime;
+
+    const elapsed = Math.max(0, (Date.now() - lastActionAt) / 1000);
+    return baseTime + elapsed;
+  };
+
+  const applyRemoteVideoState = (state) => {
+    if (!state) return;
+
+    const nextType = state.videoType || "file";
+    const expectedTime = getExpectedTime(state);
+
+    setVideoUrl(state.videoUrl || "");
+    setVideoType(nextType);
+    setPlaying(Boolean(state.isPlaying));
+    setPlayerError("");
+
+    if (nextType === "youtube") {
+      setYoutubeSeekTime(expectedTime);
+      return;
+    }
+
+    if (nextType === "file" && htmlVideoRef.current) {
+      suppressHtmlEventsRef.current = true;
+
+      try {
+        const current = Number(htmlVideoRef.current.currentTime) || 0;
+        const diff = Math.abs(current - expectedTime);
+
+        if (diff > 1.5) {
+          htmlVideoRef.current.currentTime = expectedTime;
+        }
+
+        if (state.isPlaying) {
+          htmlVideoRef.current.play().catch(() => {});
+        } else {
+          htmlVideoRef.current.pause();
+        }
+      } catch {}
+
+      setTimeout(() => {
+        suppressHtmlEventsRef.current = false;
+      }, 250);
+    }
+  };
+
+  const requestFreshRoomState = () => {
+    socket.emit("get_room_state", { roomId }, (response) => {
+      if (!response?.ok) return;
+
+      if (response.users) {
+        setUsers(response.users);
+      }
+
+      if (response.hostClientId) {
+        setHostClientId(response.hostClientId);
+      }
+
+      if (response.messages) {
+        setMessages(response.messages);
+      }
+
+      if (response.videoState) {
+        applyRemoteVideoState(response.videoState);
+      }
+    });
+  };
 
   useEffect(() => {
     if (!username) {
@@ -58,225 +162,306 @@ function RoomPage() {
       return;
     }
 
-    if (joinedRef.current) return;
-    joinedRef.current = true;
+    const joinRoom = () => {
+      socket.emit(
+        "join_room",
+        {
+          roomId,
+          username,
+          clientId: clientIdRef.current
+        },
+        (response) => {
+          if (!response?.ok) {
+            console.error("join_room failed", response);
+          }
+        }
+      );
+    };
 
-    socket.emit("join_room", { roomId, username });
+    const onConnect = () => {
+      setIsConnected(true);
+      joinRoom();
+
+      clearTimeout(reconnectSyncTimeoutRef.current);
+      reconnectSyncTimeoutRef.current = setTimeout(() => {
+        requestFreshRoomState();
+      }, 350);
+    };
+
+    const onDisconnect = () => {
+      setIsConnected(false);
+    };
+
+    const onRoomSnapshot = ({ users, hostClientId, videoState, messages }) => {
+      setUsers(users || []);
+      setHostClientId(hostClientId || "");
+      setMessages(messages || []);
+
+      if (videoState) {
+        applyRemoteVideoState(videoState);
+      }
+    };
 
     const onRoomUsers = (usersList) => {
-      const uniqueUsers = [];
-      const seenIds = new Set();
-
-      for (const user of usersList) {
-        if (!seenIds.has(user.id)) {
-          seenIds.add(user.id);
-          uniqueUsers.push(user);
-        }
-      }
-
-      setUsers(uniqueUsers);
+      setUsers(usersList || []);
     };
 
     const onHostData = (data) => {
-      setHostId(data.hostId || "");
+      setHostClientId(data.hostClientId || "");
     };
 
     const onVideoState = (state) => {
-      console.log("SERVER VIDEO STATE", state);
-
-      const nextType = state.videoType || "file";
-
-      setVideoUrl(state.videoUrl || "");
-      setVideoType(nextType);
-      setPlaying(!!state.isPlaying);
-
-      if (nextType === "file" && htmlVideoRef.current) {
-        htmlVideoRef.current.currentTime = state.currentTime || 0;
-
-        if (state.isPlaying) {
-          htmlVideoRef.current.play().catch(() => {});
-        } else {
-          htmlVideoRef.current.pause();
-        }
-      }
-
-      if (nextType === "youtube") {
-        setYoutubeSeekTime(state.currentTime || 0);
-      }
+      applyRemoteVideoState(state);
     };
 
-    const onPlayVideo = ({ currentTime }) => {
-      if (videoType === "file" && htmlVideoRef.current) {
-        htmlVideoRef.current.currentTime = currentTime || 0;
-        htmlVideoRef.current.play().catch(() => {});
-      }
-
-      if (videoType === "youtube") {
-        setYoutubeSeekTime(currentTime || 0);
-        setPlaying(true);
-      }
+    const onPlayVideo = ({ currentTime, lastActionAt, emittedAt }) => {
+      applyRemoteVideoState({
+        videoUrl,
+        videoType,
+        currentTime,
+        isPlaying: true,
+        lastActionAt: lastActionAt || emittedAt
+      });
     };
 
-    const onPauseVideo = ({ currentTime }) => {
-      if (videoType === "file" && htmlVideoRef.current) {
-        htmlVideoRef.current.currentTime = currentTime || 0;
-        htmlVideoRef.current.pause();
-      }
-
-      if (videoType === "youtube") {
-        setYoutubeSeekTime(currentTime || 0);
-        setPlaying(false);
-      }
+    const onPauseVideo = ({ currentTime, lastActionAt, emittedAt }) => {
+      applyRemoteVideoState({
+        videoUrl,
+        videoType,
+        currentTime,
+        isPlaying: false,
+        lastActionAt: lastActionAt || emittedAt
+      });
     };
 
-    const onSeekVideo = ({ currentTime }) => {
-      if (videoType === "file" && htmlVideoRef.current) {
-        htmlVideoRef.current.currentTime = currentTime || 0;
-      }
+    const onSeekVideo = ({ currentTime, lastActionAt, emittedAt }) => {
+      applyRemoteVideoState({
+        videoUrl,
+        videoType,
+        currentTime,
+        isPlaying: playing,
+        lastActionAt: lastActionAt || emittedAt
+      });
+    };
+
+    const onSyncProgress = ({ currentTime, isPlaying, lastActionAt, emittedAt }) => {
+      if (isHost) return;
+
+      const next = getExpectedTime({
+        currentTime,
+        isPlaying,
+        lastActionAt: lastActionAt || emittedAt
+      });
 
       if (videoType === "youtube") {
-        setYoutubeSeekTime(currentTime || 0);
+        setPlaying(Boolean(isPlaying));
+        setYoutubeSeekTime((prev) => {
+          return Math.abs(prev - next) > 1.5 ? next : prev;
+        });
+        return;
+      }
+
+      if (videoType === "file" && htmlVideoRef.current) {
+        const current = Number(htmlVideoRef.current.currentTime) || 0;
+        const diff = Math.abs(current - next);
+
+        suppressHtmlEventsRef.current = true;
+
+        try {
+          if (diff > 1.5) {
+            htmlVideoRef.current.currentTime = next;
+          }
+
+          if (isPlaying) {
+            htmlVideoRef.current.play().catch(() => {});
+          } else {
+            htmlVideoRef.current.pause();
+          }
+        } catch {}
+
+        setPlaying(Boolean(isPlaying));
+
+        setTimeout(() => {
+          suppressHtmlEventsRef.current = false;
+        }, 250);
       }
     };
 
     const onReceiveMessage = (data) => {
       setMessages((prev) => {
-        const exists = prev.some(
-          (msg) =>
-            msg.username === data.username &&
-            msg.message === data.message &&
-            msg.time === data.time
-        );
-
-        if (exists) return prev;
+        if (prev.some((msg) => msg.id === data.id)) return prev;
         return [...prev, data];
       });
     };
 
+    socket.on("connect", onConnect);
+    socket.on("disconnect", onDisconnect);
+    socket.on("room_snapshot", onRoomSnapshot);
     socket.on("room_users", onRoomUsers);
     socket.on("host_data", onHostData);
     socket.on("video_state", onVideoState);
     socket.on("play_video", onPlayVideo);
     socket.on("pause_video", onPauseVideo);
     socket.on("seek_video", onSeekVideo);
+    socket.on("sync_progress", onSyncProgress);
     socket.on("receive_message", onReceiveMessage);
 
+    if (socket.connected) {
+      onConnect();
+    }
+
     return () => {
+      socket.off("connect", onConnect);
+      socket.off("disconnect", onDisconnect);
+      socket.off("room_snapshot", onRoomSnapshot);
       socket.off("room_users", onRoomUsers);
       socket.off("host_data", onHostData);
       socket.off("video_state", onVideoState);
       socket.off("play_video", onPlayVideo);
       socket.off("pause_video", onPauseVideo);
       socket.off("seek_video", onSeekVideo);
+      socket.off("sync_progress", onSyncProgress);
       socket.off("receive_message", onReceiveMessage);
 
-      socket.emit("leave_room", { roomId });
-      joinedRef.current = false;
+      clearTimeout(reconnectSyncTimeoutRef.current);
+
+      if (leavingRef.current) {
+        socket.emit("leave_room");
+      }
     };
-}, [roomId, username, navigate]);
-  useEffect(() => {
-    console.log("VIDEO STATE CHANGED", { videoUrl, videoType });
-  }, [videoUrl, videoType]);
+  }, [roomId, username, navigate, isHost, videoType, playing, videoUrl]);
 
   useEffect(() => {
     messagesEndRef.current?.scrollIntoView({ behavior: "smooth" });
   }, [messages]);
 
   const handleSetVideo = () => {
+    if (!isHost) return;
     if (!inputUrl.trim()) return;
 
     const cleanUrl = inputUrl.trim();
     const type = detectVideoType(cleanUrl);
 
-    console.log("SET VIDEO CLICK", {
-      cleanUrl,
-      type,
-      isHost,
-      roomId,
-      socketId: socket.id
-    });
-
     setVideoUrl(cleanUrl);
     setVideoType(type);
     setPlaying(false);
     setYoutubeSeekTime(0);
-    lastProgressEmitRef.current = -1;
+    setPlayerError("");
+    lastFileSyncSecondRef.current = -1;
 
-    socket.emit("set_video", {
+    socket.emit(
+      "set_video",
+      {
+        roomId,
+        videoUrl: cleanUrl,
+        videoType: type
+      },
+      (response) => {
+        if (!response?.ok) {
+          console.error("set_video failed", response);
+          alert("Не удалось установить видео");
+        }
+      }
+    );
+  };
+
+  const handleFilePlay = () => {
+    if (!isHost || suppressHtmlEventsRef.current || !htmlVideoRef.current) return;
+
+    socket.emit("play_video", {
       roomId,
-      videoUrl: cleanUrl,
-      videoType: type
+      currentTime: htmlVideoRef.current.currentTime
     });
   };
 
-const handleFilePlay = () => {
-  if (!htmlVideoRef.current) return;
+  const handleFilePause = () => {
+    if (!isHost || suppressHtmlEventsRef.current || !htmlVideoRef.current) return;
 
-  socket.emit("play_video", {
-    roomId,
-    currentTime: htmlVideoRef.current.currentTime
-  });
-};
-
-const handleFilePause = () => {
-  if (!htmlVideoRef.current) return;
-
-  socket.emit("pause_video", {
-    roomId,
-    currentTime: htmlVideoRef.current.currentTime
-  });
-};
-
-const handleFileSeeked = () => {
-  if (!htmlVideoRef.current) return;
-
-  socket.emit("seek_video", {
-    roomId,
-    currentTime: htmlVideoRef.current.currentTime
-  });
-};
-
-  const handleYoutubeReady = () => {
-    console.log("YOUTUBE READY");
+    socket.emit("pause_video", {
+      roomId,
+      currentTime: htmlVideoRef.current.currentTime
+    });
   };
 
-const handleYoutubePlay = (currentTime) => {
-  socket.emit("play_video", {
-    roomId,
-    currentTime
-  });
-};
+  const handleFileSeeked = () => {
+    if (!isHost || suppressHtmlEventsRef.current || !htmlVideoRef.current) return;
 
-const handleYoutubePause = (currentTime) => {
-  socket.emit("pause_video", {
-    roomId,
-    currentTime
-  });
-};
+    socket.emit("seek_video", {
+      roomId,
+      currentTime: htmlVideoRef.current.currentTime
+    });
+  };
 
-const handleYoutubeProgress = (currentTime) => {
-  if (!playing) return;
-  
-    const rounded = Math.floor(currentTime || 0);
+  const handleFileTimeUpdate = () => {
+    if (!isHost || !htmlVideoRef.current) return;
 
-    if (rounded !== lastProgressEmitRef.current && rounded % 3 === 0) {
-      lastProgressEmitRef.current = rounded;
+    const current = Number(htmlVideoRef.current.currentTime) || 0;
+    const rounded = Math.floor(current);
 
-      socket.emit("seek_video", {
-        roomId,
-        currentTime: rounded
-      });
-    }
+    if (rounded === lastFileSyncSecondRef.current) return;
+    lastFileSyncSecondRef.current = rounded;
+
+    socket.emit("sync_progress", {
+      roomId,
+      currentTime: current,
+      isPlaying: !htmlVideoRef.current.paused
+    });
+  };
+
+  const handleYoutubeReady = () => {};
+
+  const handleYoutubePlay = (currentTime) => {
+    if (!isHost) return;
+
+    socket.emit("play_video", {
+      roomId,
+      currentTime
+    });
+  };
+
+  const handleYoutubePause = (currentTime) => {
+    if (!isHost) return;
+
+    socket.emit("pause_video", {
+      roomId,
+      currentTime
+    });
+  };
+
+  const handleYoutubeProgress = (currentTime) => {
+    if (!isHost) return;
+
+    socket.emit("sync_progress", {
+      roomId,
+      currentTime,
+      isPlaying: true
+    });
   };
 
   const sendMessage = () => {
     if (!message.trim()) return;
 
-    socket.emit("send_message", {
-      roomId,
-      username,
-      message: message.trim()
-    });
+    const text = message.trim();
+    const clientMessageId =
+      typeof crypto !== "undefined" && crypto.randomUUID
+        ? crypto.randomUUID()
+        : `msg_${Date.now()}_${Math.random().toString(36).slice(2, 8)}`;
+
+    socket.emit(
+      "send_message",
+      {
+        roomId,
+        username,
+        message: text,
+        clientMessageId
+      },
+      (response) => {
+        if (!response?.ok) {
+          console.error("message failed", response);
+          alert("Сообщение не отправилось");
+        }
+      }
+    );
 
     setMessage("");
   };
@@ -290,6 +475,11 @@ const handleYoutubeProgress = (currentTime) => {
     } catch {
       alert("Не удалось скопировать ссылку");
     }
+  };
+
+  const handleLeave = () => {
+    leavingRef.current = true;
+    navigate("/");
   };
 
   const renderPlayer = () => {
@@ -308,49 +498,84 @@ const handleYoutubeProgress = (currentTime) => {
           onPlay={handleYoutubePlay}
           onPause={handleYoutubePause}
           onProgress={handleYoutubeProgress}
+          onError={(text) => setPlayerError(text)}
         />
       );
     }
 
     if (videoType === "vk") {
       return (
-        <iframe
-          src={videoUrl}
-          width="100%"
-          height="500"
-          allow="autoplay; encrypted-media; fullscreen; picture-in-picture"
-          allowFullScreen
-          frameBorder="0"
-          title="VK Video"
-          className="player-iframe"
-        />
+        <div className="vk-player-wrap">
+          <iframe
+            src={videoUrl}
+            width="100%"
+            height="500"
+            allow="autoplay; encrypted-media; fullscreen; picture-in-picture"
+            allowFullScreen
+            frameBorder="0"
+            title="VK Video"
+            className="player-iframe"
+            onError={() =>
+              setPlayerError(
+                "Это видео запрещено для встраивания или временно недоступно"
+              )
+            }
+          />
+          {playerError && <div className="player-error-inline">{playerError}</div>}
+        </div>
       );
     }
 
     return (
       <video
-  ref={htmlVideoRef}
-  src={videoUrl}
-  controls={true}
-  onPlay={handleFilePlay}
-  onPause={handleFilePause}
-  onSeeked={handleFileSeeked}
-  className="player-video"
-/>
+        ref={htmlVideoRef}
+        src={videoUrl}
+        controls
+        onPlay={handleFilePlay}
+        onPause={handleFilePause}
+        onSeeked={handleFileSeeked}
+        onTimeUpdate={handleFileTimeUpdate}
+        onWaiting={() => {
+          if (!isHost) requestFreshRoomState();
+        }}
+        onStalled={() => {
+          if (!isHost) requestFreshRoomState();
+        }}
+        onPlaying={() => {
+          if (!isHost) requestFreshRoomState();
+        }}
+        className="player-video"
+      />
     );
   };
 
   return (
     <div className="room-page">
+      {sidebarOpen && (
+        <div className="mobile-backdrop" onClick={() => setSidebarOpen(false)} />
+      )}
+
       <div className="room-header">
         <div>
-          <h1 className="room-title">LAUD</h1>
+          <div className="room-title-row">
+            <h1 className="room-title">LAUD</h1>
+
+            <button
+              className="app-button app-button-dark mobile-drawer-toggle"
+              onClick={() => setSidebarOpen(true)}
+              type="button"
+            >
+              ☰
+            </button>
+          </div>
+
           <p className="room-subtitle">
             Комната: {roomId} <span className="room-dot">•</span> Вы: {username}{" "}
             {isHost ? "• Хост" : ""}
           </p>
+
           <div className="hint-text">
-            debug: host={String(isHost)} | type={videoType} | url={videoUrl || "EMPTY"}
+            {isConnected ? "Онлайн" : "Переподключение..."}
           </div>
         </div>
 
@@ -358,7 +583,7 @@ const handleYoutubeProgress = (currentTime) => {
           <button className="app-button app-button-dark" onClick={copyInviteLink}>
             {copyText}
           </button>
-          <button className="app-button app-button-light" onClick={() => navigate("/")}>
+          <button className="app-button app-button-light" onClick={handleLeave}>
             Выйти
           </button>
         </div>
@@ -395,15 +620,32 @@ const handleYoutubeProgress = (currentTime) => {
           </div>
         </div>
 
-        <div className="room-sidebar">
-          <div className="panel">
-            <h2 className="panel-title">Участники</h2>
+        <div
+          className={`room-sidebar ${
+            sidebarOpen ? "mobile-open" : "mobile-hidden"
+          }`}
+        >
+          <div className="panel mobile-sidebar-panel">
+            <div className="sidebar-panel-header">
+              <h2 className="panel-title">Участники</h2>
+              <button
+                className="app-button app-button-dark mobile-close-button"
+                onClick={() => setSidebarOpen(false)}
+                type="button"
+              >
+                ✕
+              </button>
+            </div>
 
             <div className="users-list">
               {users.map((user) => (
-                <div key={user.id} className="user-item">
-                  <span>{user.username}</span>
-                  {user.id === hostId && <span className="host-badge">HOST</span>}
+                <div key={user.clientId || user.id} className="user-item">
+                  <span>
+                    {user.username} {!user.isOnline ? "• offline" : ""}
+                  </span>
+                  {user.clientId === hostClientId && (
+                    <span className="host-badge">HOST</span>
+                  )}
                 </div>
               ))}
             </div>
@@ -413,12 +655,12 @@ const handleYoutubeProgress = (currentTime) => {
             <h2 className="panel-title">Чат</h2>
 
             <div className="chat-box">
-              {messages.map((msg, index) => {
-                const isSystem = msg.username === "Система";
+              {messages.map((msg) => {
+                const isSystem = msg.username === "Система" || msg.system;
 
                 return (
                   <div
-                    key={index}
+                    key={msg.id}
                     className={`message-item ${isSystem ? "message-system" : ""}`}
                   >
                     <div className="message-top">
