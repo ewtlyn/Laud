@@ -4,7 +4,12 @@ const cors = require("cors");
 const { Server } = require("socket.io");
 
 const app = express();
-app.use(cors());
+
+app.use(
+  cors({
+    origin: "*"
+  })
+);
 
 const server = http.createServer(app);
 
@@ -31,7 +36,6 @@ function createSystemMessage(text) {
 
 function removeUserFromRoom(socket) {
   const roomId = socket.roomId;
-
   if (!roomId || !rooms[roomId]) return;
 
   const room = rooms[roomId];
@@ -138,37 +142,37 @@ io.on("connection", (socket) => {
     );
   });
 
+  // Любой участник может запустить видео
   socket.on("play_video", ({ roomId, currentTime }) => {
     if (!rooms[roomId]) return;
-    if (rooms[roomId].hostId !== socket.id) return;
 
     rooms[roomId].videoState.isPlaying = true;
     rooms[roomId].videoState.currentTime = currentTime || 0;
 
-    socket.to(roomId).emit("play_video", {
+    io.to(roomId).emit("play_video", {
       currentTime: currentTime || 0
     });
   });
 
+  // Любой участник может поставить на паузу
   socket.on("pause_video", ({ roomId, currentTime }) => {
     if (!rooms[roomId]) return;
-    if (rooms[roomId].hostId !== socket.id) return;
 
     rooms[roomId].videoState.isPlaying = false;
     rooms[roomId].videoState.currentTime = currentTime || 0;
 
-    socket.to(roomId).emit("pause_video", {
+    io.to(roomId).emit("pause_video", {
       currentTime: currentTime || 0
     });
   });
 
+  // Любой участник может перематывать
   socket.on("seek_video", ({ roomId, currentTime }) => {
     if (!rooms[roomId]) return;
-    if (rooms[roomId].hostId !== socket.id) return;
 
     rooms[roomId].videoState.currentTime = currentTime || 0;
 
-    socket.to(roomId).emit("seek_video", {
+    io.to(roomId).emit("seek_video", {
       currentTime: currentTime || 0
     });
   });
