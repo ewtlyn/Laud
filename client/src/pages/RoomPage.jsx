@@ -59,8 +59,8 @@ function RoomPage() {
   const messagesEndRef = useRef(null);
   const suppressHtmlEventsRef = useRef(false);
   const leavingRef = useRef(false);
-  const lastFileSyncSecondRef = useRef(-1);
   const reconnectSyncTimeoutRef = useRef(null);
+  const lastFileSyncSecondRef = useRef(-1);
 
   const [users, setUsers] = useState([]);
   const [hostClientId, setHostClientId] = useState("");
@@ -70,7 +70,6 @@ function RoomPage() {
   const [inputUrl, setInputUrl] = useState("");
   const [messages, setMessages] = useState([]);
   const [message, setMessage] = useState("");
-  const [copyText, setCopyText] = useState("Скопировать ссылку");
   const [playing, setPlaying] = useState(false);
   const [sidebarOpen, setSidebarOpen] = useState(false);
   const [playerError, setPlayerError] = useState("");
@@ -138,21 +137,10 @@ function RoomPage() {
     socket.emit("get_room_state", { roomId }, (response) => {
       if (!response?.ok) return;
 
-      if (response.users) {
-        setUsers(response.users);
-      }
-
-      if (response.hostClientId) {
-        setHostClientId(response.hostClientId);
-      }
-
-      if (response.messages) {
-        setMessages(response.messages);
-      }
-
-      if (response.videoState) {
-        applyRemoteVideoState(response.videoState);
-      }
+      if (response.users) setUsers(response.users);
+      if (response.hostClientId) setHostClientId(response.hostClientId);
+      if (response.messages) setMessages(response.messages);
+      if (response.videoState) applyRemoteVideoState(response.videoState);
     });
   };
 
@@ -329,7 +317,8 @@ function RoomPage() {
         socket.emit("leave_room");
       }
     };
-}, [roomId, username, navigate]);
+  }, [roomId, username, navigate]);
+
   useEffect(() => {
     messagesEndRef.current?.scrollIntoView({ behavior: "smooth" });
   }, [messages]);
@@ -465,17 +454,6 @@ function RoomPage() {
     setMessage("");
   };
 
-  const copyInviteLink = async () => {
-    try {
-      const link = `${window.location.origin}/room/${roomId}`;
-      await navigator.clipboard.writeText(link);
-      setCopyText("Скопировано");
-      setTimeout(() => setCopyText("Скопировать ссылку"), 1500);
-    } catch {
-      alert("Не удалось скопировать ссылку");
-    }
-  };
-
   const handleLeave = () => {
     leavingRef.current = true;
     navigate("/");
@@ -548,150 +526,162 @@ function RoomPage() {
     );
   };
 
- return (
-  <div className="room-page">
-    {sidebarOpen && (
-      <div className="mobile-backdrop" onClick={() => setSidebarOpen(false)} />
-    )}
+  return (
+    <div className="room-page room-shell">
+      {sidebarOpen && (
+        <div className="mobile-backdrop" onClick={() => setSidebarOpen(false)} />
+      )}
 
-    <div className="room-header cleaner-header">
-      <div className="room-header-left">
-        <div className="room-title-row">
-          <h1 className="room-title">LAUD</h1>
+      <div className="room-topbar">
+        <div className="room-topbar-left">
+          <div className="brand-row">
+            <h1 className="room-brand">LAUD</h1>
 
-          <button
-            className="app-button app-button-dark mobile-drawer-toggle compact-icon-button"
-            onClick={() => setSidebarOpen(true)}
-            type="button"
-          >
-            ☰
+            <button
+              className="icon-button mobile-drawer-toggle"
+              onClick={() => setSidebarOpen(true)}
+              type="button"
+              aria-label="Открыть участников"
+            >
+              ☰
+            </button>
+          </div>
+
+          <div className="room-meta">
+            <span className="room-meta-item">Комната: {roomId}</span>
+            <span className="room-meta-sep">•</span>
+            <span className="room-meta-item">Вы: {username}</span>
+            {isHost && (
+              <>
+                <span className="room-meta-sep">•</span>
+                <span className="room-meta-item">Хост</span>
+              </>
+            )}
+          </div>
+
+          <div className={`room-status ${isConnected ? "online" : "offline"}`}>
+            <span className="status-dot" />
+            {isConnected ? "Онлайн" : "Переподключение..."}
+          </div>
+        </div>
+
+        <div className="room-topbar-actions">
+          <button className="ghost-button" onClick={handleLeave}>
+            Выйти
           </button>
         </div>
-
-        <p className="room-subtitle">
-          Комната: {roomId} <span className="room-dot">•</span> Вы: {username}{" "}
-          {isHost ? "• Хост" : ""}
-        </p>
-
-        <div className="hint-text status-text">
-          {isConnected ? "Онлайн" : "Переподключение..."}
-        </div>
       </div>
 
-      <div className="room-header-buttons small-header-actions">
-        <button className="app-button app-button-light exit-button" onClick={handleLeave}>
-          Выйти
-        </button>
-      </div>
-    </div>
+      <div className="room-grid">
+        <main className="main-column">
+          <section className="card player-card">
+            <div className="section-header">
+              <h2 className="section-title">Плеер</h2>
+            </div>
 
-    <div className="room-layout improved-room-layout">
-      <div className="room-main">
-        <div className="panel player-panel">
-          <div className="player-panel-top">
-            <h2 className="panel-title">Плеер</h2>
-          </div>
+            <div className="video-toolbar">
+              <input
+                className="app-input compact-input"
+                type="text"
+                placeholder="Вставь ссылку на видео"
+                value={inputUrl}
+                onChange={(e) => setInputUrl(e.target.value)}
+                disabled={!isHost}
+              />
+              <button
+                className="primary-button"
+                onClick={handleSetVideo}
+                disabled={!isHost}
+              >
+                Установить
+              </button>
+            </div>
 
-          <div className="video-input-row compact-video-input-row">
-            <input
-              className="app-input compact-video-input"
-              type="text"
-              placeholder="Вставь ссылку на видео"
-              value={inputUrl}
-              onChange={(e) => setInputUrl(e.target.value)}
-              disabled={!isHost}
-            />
-            <button
-              className="app-button app-button-light compact-set-button"
-              onClick={handleSetVideo}
-              disabled={!isHost}
-            >
-              Установить
-            </button>
-          </div>
+            <div className="micro-hint">
+              YouTube, mp4 или VK embed-ссылка вида video_ext.php
+            </div>
 
-          <div className="hint-text compact-hint">
-            Для VK вставляй embed-ссылку вида video_ext.php
-          </div>
+            <div className="player-stage">{renderPlayer()}</div>
+          </section>
 
-          <div className="big-player-wrap">{renderPlayer()}</div>
-        </div>
+          <section className="card chat-card">
+            <div className="section-header">
+              <h2 className="section-title">Чат</h2>
+            </div>
 
-        <div className="panel mobile-chat-panel chat-panel">
-          <h2 className="panel-title">Чат</h2>
+            <div className="chat-box modern-chat-box">
+              {messages.map((msg) => {
+                const isSystem = msg.username === "Система" || msg.system;
 
-          <div className="chat-box improved-chat-box">
-            {messages.map((msg) => {
-              const isSystem = msg.username === "Система" || msg.system;
-
-              return (
-                <div
-                  key={msg.id}
-                  className={`message-item ${isSystem ? "message-system" : ""}`}
-                >
-                  <div className="message-top">
-                    <strong>{msg.username}</strong>
-                    <span className="message-time">{msg.time}</span>
+                return (
+                  <div
+                    key={msg.id}
+                    className={`message-item ${isSystem ? "message-system" : ""}`}
+                  >
+                    <div className="message-top">
+                      <strong>{msg.username}</strong>
+                      <span className="message-time">{msg.time}</span>
+                    </div>
+                    <div>{msg.message}</div>
                   </div>
-                  <div>{msg.message}</div>
+                );
+              })}
+              <div ref={messagesEndRef} />
+            </div>
+
+            <div className="chat-input-row">
+              <input
+                className="app-input"
+                type="text"
+                placeholder="Введите сообщение"
+                value={message}
+                onChange={(e) => setMessage(e.target.value)}
+                onKeyDown={(e) => {
+                  if (e.key === "Enter") sendMessage();
+                }}
+              />
+              <button className="secondary-button send-button" onClick={sendMessage}>
+                Отправить
+              </button>
+            </div>
+          </section>
+        </main>
+
+        <aside
+          className={`side-column participants-drawer ${
+            sidebarOpen ? "mobile-open" : "mobile-hidden"
+          }`}
+        >
+          <section className="card participants-card">
+            <div className="section-header">
+              <h2 className="section-title">Участники</h2>
+              <button
+                className="icon-button mobile-close-button"
+                onClick={() => setSidebarOpen(false)}
+                type="button"
+                aria-label="Закрыть участников"
+              >
+                ✕
+              </button>
+            </div>
+
+            <div className="users-list">
+              {users.map((user) => (
+                <div key={user.clientId || user.id} className="user-item">
+                  <span>
+                    {user.username} {!user.isOnline ? "• offline" : ""}
+                  </span>
+                  {user.clientId === hostClientId && (
+                    <span className="host-badge">HOST</span>
+                  )}
                 </div>
-              );
-            })}
-            <div ref={messagesEndRef} />
-          </div>
-
-          <div className="control-row chat-row compact-chat-row">
-            <input
-              className="app-input"
-              type="text"
-              placeholder="Введите сообщение"
-              value={message}
-              onChange={(e) => setMessage(e.target.value)}
-              onKeyDown={(e) => {
-                if (e.key === "Enter") sendMessage();
-              }}
-            />
-            <button className="app-button app-button-light compact-send-button" onClick={sendMessage}>
-              Отправить
-            </button>
-          </div>
-        </div>
-      </div>
-
-      <div
-        className={`room-sidebar ${
-          sidebarOpen ? "mobile-open" : "mobile-hidden"
-        }`}
-      >
-        <div className="panel mobile-sidebar-panel participants-panel">
-          <div className="sidebar-panel-header">
-            <h2 className="panel-title">Участники</h2>
-            <button
-              className="app-button app-button-dark mobile-close-button compact-icon-button"
-              onClick={() => setSidebarOpen(false)}
-              type="button"
-            >
-              ✕
-            </button>
-          </div>
-
-          <div className="users-list">
-            {users.map((user) => (
-              <div key={user.clientId || user.id} className="user-item">
-                <span>
-                  {user.username} {!user.isOnline ? "• offline" : ""}
-                </span>
-                {user.clientId === hostClientId && (
-                  <span className="host-badge">HOST</span>
-                )}
-              </div>
-            ))}
-          </div>
-        </div>
+              ))}
+            </div>
+          </section>
+        </aside>
       </div>
     </div>
-  </div>
-);
+  );
 }
 
 export default RoomPage;
