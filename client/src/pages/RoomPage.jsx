@@ -549,151 +549,151 @@ function RoomPage() {
     );
   };
 
-  return (
-    <div className="room-page">
-      {sidebarOpen && (
-        <div className="mobile-backdrop" onClick={() => setSidebarOpen(false)} />
-      )}
+ return (
+  <div className="room-page">
+    {sidebarOpen && (
+      <div className="mobile-backdrop" onClick={() => setSidebarOpen(false)} />
+    )}
 
-      <div className="room-header">
-        <div>
-          <div className="room-title-row">
-            <h1 className="room-title">LAUD</h1>
+    <div className="room-header">
+      <div>
+        <div className="room-title-row">
+          <h1 className="room-title">LAUD</h1>
 
-            <button
-              className="app-button app-button-dark mobile-drawer-toggle"
-              onClick={() => setSidebarOpen(true)}
-              type="button"
-            >
-              ☰
-            </button>
-          </div>
-
-          <p className="room-subtitle">
-            Комната: {roomId} <span className="room-dot">•</span> Вы: {username}{" "}
-            {isHost ? "• Хост" : ""}
-          </p>
-
-          <div className="hint-text">
-            {isConnected ? "Онлайн" : "Переподключение..."}
-          </div>
+          <button
+            className="app-button app-button-dark mobile-drawer-toggle"
+            onClick={() => setSidebarOpen(true)}
+            type="button"
+          >
+            ☰
+          </button>
         </div>
 
-        <div className="room-header-buttons">
-          <button className="app-button app-button-dark" onClick={copyInviteLink}>
-            {copyText}
-          </button>
-          <button className="app-button app-button-light" onClick={handleLeave}>
-            Выйти
-          </button>
+        <p className="room-subtitle">
+          Комната: {roomId} <span className="room-dot">•</span> Вы: {username}{" "}
+          {isHost ? "• Хост" : ""}
+        </p>
+
+        <div className="hint-text">
+          {isConnected ? "Онлайн" : "Переподключение..."}
         </div>
       </div>
 
-      <div className="room-layout">
-        <div className="room-main">
-          <div className="panel">
-            <h2 className="panel-title">Плеер</h2>
+      <div className="room-header-buttons">
+        <button className="app-button app-button-dark" onClick={copyInviteLink}>
+          {copyText}
+        </button>
+        <button className="app-button app-button-light" onClick={handleLeave}>
+          Выйти
+        </button>
+      </div>
+    </div>
 
-            <div className="control-row">
-              <input
-                className="app-input"
-                type="text"
-                placeholder="mp4 / YouTube / VK embed"
-                value={inputUrl}
-                onChange={(e) => setInputUrl(e.target.value)}
-                disabled={!isHost}
-              />
-              <button
-                className="app-button app-button-light"
-                onClick={handleSetVideo}
-                disabled={!isHost}
-              >
-                Установить
-              </button>
-            </div>
+    <div className="room-layout">
+      <div className="room-main">
+        <div className="panel">
+          <h2 className="panel-title">Плеер</h2>
 
-            <div className="hint-text">
-              Для VK вставляй embed-ссылку вида video_ext.php
-            </div>
-
-            {renderPlayer()}
+          <div className="control-row">
+            <input
+              className="app-input"
+              type="text"
+              placeholder="mp4 / YouTube / VK embed"
+              value={inputUrl}
+              onChange={(e) => setInputUrl(e.target.value)}
+              disabled={!isHost}
+            />
+            <button
+              className="app-button app-button-light"
+              onClick={handleSetVideo}
+              disabled={!isHost}
+            >
+              Установить
+            </button>
           </div>
+
+          <div className="hint-text">
+            Для VK вставляй embed-ссылку вида video_ext.php
+          </div>
+
+          {renderPlayer()}
         </div>
 
-        <div
-          className={`room-sidebar ${
-            sidebarOpen ? "mobile-open" : "mobile-hidden"
-          }`}
-        >
-          <div className="panel mobile-sidebar-panel">
-            <div className="sidebar-panel-header">
-              <h2 className="panel-title">Участники</h2>
-              <button
-                className="app-button app-button-dark mobile-close-button"
-                onClick={() => setSidebarOpen(false)}
-                type="button"
-              >
-                ✕
-              </button>
-            </div>
+        <div className="panel mobile-chat-panel">
+          <h2 className="panel-title">Чат</h2>
 
-            <div className="users-list">
-              {users.map((user) => (
-                <div key={user.clientId || user.id} className="user-item">
-                  <span>
-                    {user.username} {!user.isOnline ? "• offline" : ""}
-                  </span>
-                  {user.clientId === hostClientId && (
-                    <span className="host-badge">HOST</span>
-                  )}
+          <div className="chat-box">
+            {messages.map((msg) => {
+              const isSystem = msg.username === "Система" || msg.system;
+
+              return (
+                <div
+                  key={msg.id}
+                  className={`message-item ${isSystem ? "message-system" : ""}`}
+                >
+                  <div className="message-top">
+                    <strong>{msg.username}</strong>
+                    <span className="message-time">{msg.time}</span>
+                  </div>
+                  <div>{msg.message}</div>
                 </div>
-              ))}
-            </div>
+              );
+            })}
+            <div ref={messagesEndRef} />
           </div>
 
-          <div className="panel">
-            <h2 className="panel-title">Чат</h2>
+          <div className="control-row chat-row">
+            <input
+              className="app-input"
+              type="text"
+              placeholder="Введите сообщение"
+              value={message}
+              onChange={(e) => setMessage(e.target.value)}
+              onKeyDown={(e) => {
+                if (e.key === "Enter") sendMessage();
+              }}
+            />
+            <button className="app-button app-button-light" onClick={sendMessage}>
+              Отправить
+            </button>
+          </div>
+        </div>
+      </div>
 
-            <div className="chat-box">
-              {messages.map((msg) => {
-                const isSystem = msg.username === "Система" || msg.system;
+      <div
+        className={`room-sidebar ${
+          sidebarOpen ? "mobile-open" : "mobile-hidden"
+        }`}
+      >
+        <div className="panel mobile-sidebar-panel">
+          <div className="sidebar-panel-header">
+            <h2 className="panel-title">Участники</h2>
+            <button
+              className="app-button app-button-dark mobile-close-button"
+              onClick={() => setSidebarOpen(false)}
+              type="button"
+            >
+              ✕
+            </button>
+          </div>
 
-                return (
-                  <div
-                    key={msg.id}
-                    className={`message-item ${isSystem ? "message-system" : ""}`}
-                  >
-                    <div className="message-top">
-                      <strong>{msg.username}</strong>
-                      <span className="message-time">{msg.time}</span>
-                    </div>
-                    <div>{msg.message}</div>
-                  </div>
-                );
-              })}
-              <div ref={messagesEndRef} />
-            </div>
-
-            <div className="control-row chat-row">
-              <input
-                className="app-input"
-                type="text"
-                placeholder="Введите сообщение"
-                value={message}
-                onChange={(e) => setMessage(e.target.value)}
-                onKeyDown={(e) => {
-                  if (e.key === "Enter") sendMessage();
-                }}
-              />
-              <button className="app-button app-button-light" onClick={sendMessage}>
-                Отправить
-              </button>
-            </div>
+          <div className="users-list">
+            {users.map((user) => (
+              <div key={user.clientId || user.id} className="user-item">
+                <span>
+                  {user.username} {!user.isOnline ? "• offline" : ""}
+                </span>
+                {user.clientId === hostClientId && (
+                  <span className="host-badge">HOST</span>
+                )}
+              </div>
+            ))}
           </div>
         </div>
       </div>
     </div>
-  );
+  </div>
+);
 }
 
 export default RoomPage;
