@@ -130,8 +130,8 @@ export default function YouTubeSyncPlayer({
         mountRef.current.appendChild(playerNode);
 
         playerRef.current = new YT.Player(playerNode, {
-          width: "100%",
-          height: "100%",
+          width: 640,
+          height: 360,
           videoId,
           playerVars: {
             autoplay: 0,
