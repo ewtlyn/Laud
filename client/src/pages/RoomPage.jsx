@@ -61,6 +61,9 @@ function RoomPage() {
   const leavingRef = useRef(false);
   const reconnectSyncTimeoutRef = useRef(null);
   const lastFileSyncSecondRef = useRef(-1);
+  const videoUrlRef = useRef("");
+const videoTypeRef = useRef("file");
+const playingRef = useRef(false);
 
   const [users, setUsers] = useState([]);
   const [hostClientId, setHostClientId] = useState("");
@@ -74,6 +77,19 @@ function RoomPage() {
   const [sidebarOpen, setSidebarOpen] = useState(false);
   const [playerError, setPlayerError] = useState("");
   const [isConnected, setIsConnected] = useState(socket.connected);
+
+
+  useEffect(() => {
+  videoUrlRef.current = videoUrl;
+}, [videoUrl]);
+
+useEffect(() => {
+  videoTypeRef.current = videoType;
+}, [videoType]);
+
+useEffect(() => {
+  playingRef.current = playing;
+}, [playing]);
 
   const isHost = useMemo(() => {
     return hostClientId === clientIdRef.current;
@@ -464,7 +480,7 @@ const onPauseVideo = ({ currentTime, lastActionAt, emittedAt }) => {
       return <div className="player-placeholder">Видео пока не выбрано</div>;
     }
 
-    if (videoTypeRef.current === "youtube") {
+    if (videoType === "youtube") {
       return (
         <YouTubeSyncPlayer
           videoUrl={videoUrl}

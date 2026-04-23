@@ -1,7 +1,4 @@
 import { useEffect, useRef, useState } from "react";
-const videoUrlRef = useRef("");
-const videoTypeRef = useRef("file");
-const playingRef = useRef(false);
 
 function extractVideoId(url) {
   try {
@@ -20,19 +17,6 @@ function extractVideoId(url) {
     return null;
   }
 }
-
-useEffect(() => {
-  videoUrlRef.current = videoUrl;
-}, [videoUrl]);
-
-useEffect(() => {
-  videoTypeRef.current = videoType;
-}, [videoType]);
-
-useEffect(() => {
-  playingRef.current = playing;
-}, [playing]);
-
 
 function loadYouTubeApi() {
   return new Promise((resolve, reject) => {
@@ -146,8 +130,8 @@ export default function YouTubeSyncPlayer({
         mountRef.current.appendChild(playerNode);
 
         playerRef.current = new YT.Player(playerNode, {
-          width: 640,
-          height: 360,
+          width: "100%",
+          height: "100%",
           videoId,
           playerVars: {
             autoplay: 0,
