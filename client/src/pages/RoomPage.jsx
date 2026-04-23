@@ -202,35 +202,35 @@ function RoomPage() {
       applyRemoteVideoState(state);
     };
 
-    const onPlayVideo = ({ currentTime, lastActionAt, emittedAt }) => {
-      applyRemoteVideoState({
-        videoUrl,
-        videoType,
-        currentTime,
-        isPlaying: true,
-        lastActionAt: lastActionAt || emittedAt
-      });
-    };
+const onPlayVideo = ({ currentTime, lastActionAt, emittedAt }) => {
+  applyRemoteVideoState({
+    videoUrl: videoUrlRef.current,
+    videoType: videoTypeRef.current,
+    currentTime,
+    isPlaying: true,
+    lastActionAt: lastActionAt || emittedAt
+  });
+};
 
-    const onPauseVideo = ({ currentTime, lastActionAt, emittedAt }) => {
-      applyRemoteVideoState({
-        videoUrl,
-        videoType,
-        currentTime,
-        isPlaying: false,
-        lastActionAt: lastActionAt || emittedAt
-      });
-    };
+const onPauseVideo = ({ currentTime, lastActionAt, emittedAt }) => {
+  applyRemoteVideoState({
+    videoUrl: videoUrlRef.current,
+    videoType: videoTypeRef.current,
+    currentTime,
+    isPlaying: false,
+    lastActionAt: lastActionAt || emittedAt
+  });
+};
 
-    const onSeekVideo = ({ currentTime, lastActionAt, emittedAt }) => {
-      applyRemoteVideoState({
-        videoUrl,
-        videoType,
-        currentTime,
-        isPlaying: playing,
-        lastActionAt: lastActionAt || emittedAt
-      });
-    };
+  const onSeekVideo = ({ currentTime, lastActionAt, emittedAt }) => {
+  applyRemoteVideoState({
+    videoUrl: videoUrlRef.current,
+    videoType: videoTypeRef.current,
+    currentTime,
+    isPlaying: playingRef.current,
+    lastActionAt: lastActionAt || emittedAt
+  });
+};
 
     const onSyncProgress = ({ currentTime, isPlaying, lastActionAt, emittedAt }) => {
       if (isHost) return;
@@ -241,7 +241,7 @@ function RoomPage() {
         lastActionAt: lastActionAt || emittedAt
       });
 
-      if (videoType === "youtube") {
+      if (videoTypeRef.current === "youtube") {
         setPlaying(Boolean(isPlaying));
         setYoutubeSeekTime((prev) => {
           return Math.abs(prev - next) > 1.5 ? next : prev;
@@ -249,7 +249,7 @@ function RoomPage() {
         return;
       }
 
-      if (videoType === "file" && htmlVideoRef.current) {
+      if (videoTypeRef.current === "file" && htmlVideoRef.current) {
         const current = Number(htmlVideoRef.current.currentTime) || 0;
         const diff = Math.abs(current - next);
 
@@ -464,7 +464,7 @@ function RoomPage() {
       return <div className="player-placeholder">Видео пока не выбрано</div>;
     }
 
-    if (videoType === "youtube") {
+    if (videoTypeRef.current === "youtube") {
       return (
         <YouTubeSyncPlayer
           videoUrl={videoUrl}
@@ -572,114 +572,121 @@ function RoomPage() {
         </div>
       </div>
 
-      <div className="room-grid">
-        <main className="main-column">
-          <section className="card player-card">
-            <div className="section-header">
-              <h2 className="section-title">Плеер</h2>
-            </div>
-
-            <div className="video-toolbar">
-              <input
-                className="app-input compact-input"
-                type="text"
-                placeholder="Вставь ссылку на видео"
-                value={inputUrl}
-                onChange={(e) => setInputUrl(e.target.value)}
-                disabled={!isHost}
-              />
-              <button
-                className="primary-button"
-                onClick={handleSetVideo}
-                disabled={!isHost}
-              >
-                Установить
-              </button>
-            </div>
-
-            <div className="micro-hint">
-              YouTube, mp4 или VK embed-ссылка вида video_ext.php
-            </div>
-
-            <div className="player-stage">{renderPlayer()}</div>
-          </section>
-
-          <section className="card chat-card">
-            <div className="section-header">
-              <h2 className="section-title">Чат</h2>
-            </div>
-
-            <div className="chat-box modern-chat-box">
-              {messages.map((msg) => {
-                const isSystem = msg.username === "Система" || msg.system;
-
-                return (
-                  <div
-                    key={msg.id}
-                    className={`message-item ${isSystem ? "message-system" : ""}`}
-                  >
-                    <div className="message-top">
-                      <strong>{msg.username}</strong>
-                      <span className="message-time">{msg.time}</span>
-                    </div>
-                    <div>{msg.message}</div>
-                  </div>
-                );
-              })}
-              <div ref={messagesEndRef} />
-            </div>
-
-            <div className="chat-input-row">
-              <input
-                className="app-input"
-                type="text"
-                placeholder="Введите сообщение"
-                value={message}
-                onChange={(e) => setMessage(e.target.value)}
-                onKeyDown={(e) => {
-                  if (e.key === "Enter") sendMessage();
-                }}
-              />
-              <button className="secondary-button send-button" onClick={sendMessage}>
-                Отправить
-              </button>
-            </div>
-          </section>
-        </main>
-
-        <aside
-          className={`side-column participants-drawer ${
-            sidebarOpen ? "mobile-open" : "mobile-hidden"
-          }`}
-        >
-          <section className="card participants-card">
-            <div className="section-header">
-              <h2 className="section-title">Участники</h2>
-              <button
-                className="icon-button mobile-close-button"
-                onClick={() => setSidebarOpen(false)}
-                type="button"
-                aria-label="Закрыть участников"
-              >
-                ✕
-              </button>
-            </div>
-
-            <div className="users-list">
-              {users.map((user) => (
-                <div key={user.clientId || user.id} className="user-item">
-                  <span>
-                    {user.username} {!user.isOnline ? "• offline" : ""}
-                  </span>
-                  {user.clientId === hostClientId && (
-                    <span className="host-badge">HOST</span>
-                  )}
-                </div>
-              ))}
-            </div>
-          </section>
-        </aside>
+    <div className="room-grid">
+  {/* ЛЕВАЯ КОЛОНКА ПЛЕЕР */}
+  <main className="main-column">
+    <section className="card player-card">
+      <div className="section-header">
+        <h2 className="section-title">Плеер</h2>
       </div>
+
+      <div className="video-toolbar">
+        <input
+          className="app-input compact-input"
+          type="text"
+          placeholder="Вставь ссылку на видео"
+          value={inputUrl}
+          onChange={(e) => setInputUrl(e.target.value)}
+          disabled={!isHost}
+        />
+
+        <button
+          className="primary-button"
+          onClick={handleSetVideo}
+          disabled={!isHost}
+        >
+          Установить
+        </button>
+      </div>
+
+      <div className="micro-hint">
+        YouTube, mp4 или VK embed-ссылка
+      </div>
+
+      <div className="player-stage">
+        {renderPlayer()}
+      </div>
+    </section>
+  </main>
+
+  <aside className="side-column">
+    {/* ЧАТ */}
+    <section className="card chat-card">
+      <div className="section-header">
+        <h2 className="section-title">Чат</h2>
+      </div>
+
+      <div className="chat-box modern-chat-box">
+        {messages.map((msg) => {
+          const isSystem = msg.username === "Система" || msg.system;
+
+          return (
+            <div
+              key={msg.id}
+              className={`message-item ${isSystem ? "message-system" : ""}`}
+            >
+              <div className="message-top">
+                <strong>{msg.username}</strong>
+                <span className="message-time">{msg.time}</span>
+              </div>
+              <div>{msg.message}</div>
+            </div>
+          );
+        })}
+        <div ref={messagesEndRef} />
+      </div>
+
+      <div className="chat-input-row">
+        <input
+          className="app-input"
+          type="text"
+          placeholder="Введите сообщение"
+          value={message}
+          onChange={(e) => setMessage(e.target.value)}
+          onKeyDown={(e) => {
+            if (e.key === "Enter") sendMessage();
+          }}
+        />
+
+        <button
+          className="secondary-button send-button"
+          onClick={sendMessage}
+        >
+          Отправить
+        </button>
+      </div>
+    </section>
+
+    {/* УЧАСТНИКИ */}
+    <section className="card participants-card">
+      <div className="section-header">
+        <h2 className="section-title">Участники</h2>
+
+        <button
+          className="icon-button mobile-close-button"
+          onClick={() => setSidebarOpen(false)}
+          type="button"
+        >
+          ✕
+        </button>
+      </div>
+
+      <div className="users-list">
+        {users.map((user) => (
+          <div key={user.clientId || user.id} className="user-item">
+            <span>
+              {user.username} {!user.isOnline ? "• offline" : ""}
+            </span>
+
+            {user.clientId === hostClientId && (
+              <span className="host-badge">HOST</span>
+            )}
+          </div>
+        ))}
+      </div>
+    </section>
+  </aside>
+</div>
     </div>
   );
 }

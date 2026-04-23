@@ -1,4 +1,7 @@
 import { useEffect, useRef, useState } from "react";
+const videoUrlRef = useRef("");
+const videoTypeRef = useRef("file");
+const playingRef = useRef(false);
 
 function extractVideoId(url) {
   try {
@@ -17,6 +20,19 @@ function extractVideoId(url) {
     return null;
   }
 }
+
+useEffect(() => {
+  videoUrlRef.current = videoUrl;
+}, [videoUrl]);
+
+useEffect(() => {
+  videoTypeRef.current = videoType;
+}, [videoType]);
+
+useEffect(() => {
+  playingRef.current = playing;
+}, [playing]);
+
 
 function loadYouTubeApi() {
   return new Promise((resolve, reject) => {
