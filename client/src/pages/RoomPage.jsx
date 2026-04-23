@@ -62,8 +62,8 @@ function RoomPage() {
   const reconnectSyncTimeoutRef = useRef(null);
   const lastFileSyncSecondRef = useRef(-1);
   const videoUrlRef = useRef("");
-const videoTypeRef = useRef("file");
-const playingRef = useRef(false);
+  const videoTypeRef = useRef("file");
+  const playingRef = useRef(false);
 
   const [users, setUsers] = useState([]);
   const [hostClientId, setHostClientId] = useState("");
@@ -77,19 +77,30 @@ const playingRef = useRef(false);
   const [sidebarOpen, setSidebarOpen] = useState(false);
   const [playerError, setPlayerError] = useState("");
   const [isConnected, setIsConnected] = useState(socket.connected);
-
+  const [activeMobileTab, setActiveMobileTab] = useState("chat");
 
   useEffect(() => {
-  videoUrlRef.current = videoUrl;
-}, [videoUrl]);
+    videoUrlRef.current = videoUrl;
+  }, [videoUrl]);
 
-useEffect(() => {
-  videoTypeRef.current = videoType;
-}, [videoType]);
+  useEffect(() => {
+    videoTypeRef.current = videoType;
+  }, [videoType]);
 
-useEffect(() => {
-  playingRef.current = playing;
-}, [playing]);
+  useEffect(() => {
+    playingRef.current = playing;
+  }, [playing]);
+
+  useEffect(() => {
+    const handleResize = () => {
+      if (window.innerWidth > 640) {
+        setSidebarOpen(false);
+      }
+    };
+
+    window.addEventListener("resize", handleResize);
+    return () => window.removeEventListener("resize", handleResize);
+  }, []);
 
   const isHost = useMemo(() => {
     return hostClientId === clientIdRef.current;
@@ -218,35 +229,35 @@ useEffect(() => {
       applyRemoteVideoState(state);
     };
 
-const onPlayVideo = ({ currentTime, lastActionAt, emittedAt }) => {
-  applyRemoteVideoState({
-    videoUrl: videoUrlRef.current,
-    videoType: videoTypeRef.current,
-    currentTime,
-    isPlaying: true,
-    lastActionAt: lastActionAt || emittedAt
-  });
-};
+    const onPlayVideo = ({ currentTime, lastActionAt, emittedAt }) => {
+      applyRemoteVideoState({
+        videoUrl: videoUrlRef.current,
+        videoType: videoTypeRef.current,
+        currentTime,
+        isPlaying: true,
+        lastActionAt: lastActionAt || emittedAt
+      });
+    };
 
-const onPauseVideo = ({ currentTime, lastActionAt, emittedAt }) => {
-  applyRemoteVideoState({
-    videoUrl: videoUrlRef.current,
-    videoType: videoTypeRef.current,
-    currentTime,
-    isPlaying: false,
-    lastActionAt: lastActionAt || emittedAt
-  });
-};
+    const onPauseVideo = ({ currentTime, lastActionAt, emittedAt }) => {
+      applyRemoteVideoState({
+        videoUrl: videoUrlRef.current,
+        videoType: videoTypeRef.current,
+        currentTime,
+        isPlaying: false,
+        lastActionAt: lastActionAt || emittedAt
+      });
+    };
 
-  const onSeekVideo = ({ currentTime, lastActionAt, emittedAt }) => {
-  applyRemoteVideoState({
-    videoUrl: videoUrlRef.current,
-    videoType: videoTypeRef.current,
-    currentTime,
-    isPlaying: playingRef.current,
-    lastActionAt: lastActionAt || emittedAt
-  });
-};
+    const onSeekVideo = ({ currentTime, lastActionAt, emittedAt }) => {
+      applyRemoteVideoState({
+        videoUrl: videoUrlRef.current,
+        videoType: videoTypeRef.current,
+        currentTime,
+        isPlaying: playingRef.current,
+        lastActionAt: lastActionAt || emittedAt
+      });
+    };
 
     const onSyncProgress = ({ currentTime, isPlaying, lastActionAt, emittedAt }) => {
       if (isHost) return;
@@ -333,7 +344,7 @@ const onPauseVideo = ({ currentTime, lastActionAt, emittedAt }) => {
         socket.emit("leave_room");
       }
     };
-  }, [roomId, username, navigate]);
+  }, [roomId, username, navigate, isHost]);
 
   useEffect(() => {
     messagesEndRef.current?.scrollIntoView({ behavior: "smooth" });
@@ -542,6 +553,96 @@ const onPauseVideo = ({ currentTime, lastActionAt, emittedAt }) => {
     );
   };
 
+  const renderChat = () => (
+    <section className="card chat-card">
+      <div className="section-header">
+        <h2 className="section-title">Чат</h2>
+      </div>
+
+      <div className="chat-box modern-chat-box">
+        {messages.map((msg) => {
+          const isSystem = msg.username === "Система" || msg.system;
+
+          return (
+            <div
+              key={msg.id}
+              className={`message-item ${isSystem ? "message-system" : ""}`}
+            >
+              <div className="message-top">
+                <strong>{msg.username}</strong>
+                <span className="message-time">{msg.time}</span>
+              </div>
+              <div>{msg.message}</div>
+            </div>
+          );
+        })}
+        <div ref={messagesEndRef} />
+      </div>
+
+      <div className="chat-input-row">
+        <input
+          className="app-input"
+          type="text"
+          placeholder="Введите сообщение"
+          value={message}
+          onChange={(e) => setMessage(e.target.value)}
+          onKeyDown={(e) => {
+            if (e.key === "Enter") sendMessage();
+          }}
+        />
+
+        <button
+          className="secondary-button send-button"
+          onClick={sendMessage}
+        >
+          Отправить
+        </button>
+      </div>
+    </section>
+  );
+
+  const renderParticipants = (mobileDrawer = false) => (
+    <section
+      className={`card participants-card ${
+        mobileDrawer ? "participants-drawer" : ""
+      } ${
+        mobileDrawer
+          ? sidebarOpen
+            ? "mobile-open"
+            : "mobile-hidden"
+          : ""
+      }`}
+    >
+      <div className="section-header">
+        <h2 className="section-title">Участники</h2>
+
+        {mobileDrawer && (
+          <button
+            className="icon-button mobile-close-button"
+            onClick={() => setSidebarOpen(false)}
+            type="button"
+          >
+            ✕
+          </button>
+        )}
+      </div>
+
+      <div className="users-list">
+        {users.map((user) => (
+          <div key={user.clientId || user.id} className="user-item">
+            <span>
+              {user.username} {!user.isOnline ? "• offline" : ""}
+            </span>
+
+            {user.clientId === hostClientId && (
+              <span className="host-badge">HOST</span>
+            )}
+          </div>
+        ))}
+      </div>
+    </section>
+  );
+
   return (
     <div className="room-page room-shell">
       {sidebarOpen && (
@@ -588,121 +689,80 @@ const onPauseVideo = ({ currentTime, lastActionAt, emittedAt }) => {
         </div>
       </div>
 
-    <div className="room-grid">
-  {/* ЛЕВАЯ КОЛОНКА ПЛЕЕР */}
-  <main className="main-column">
-    <section className="card player-card">
-      <div className="section-header">
-        <h2 className="section-title">Плеер</h2>
-      </div>
-
-      <div className="video-toolbar">
-        <input
-          className="app-input compact-input"
-          type="text"
-          placeholder="Вставь ссылку на видео"
-          value={inputUrl}
-          onChange={(e) => setInputUrl(e.target.value)}
-          disabled={!isHost}
-        />
-
-        <button
-          className="primary-button"
-          onClick={handleSetVideo}
-          disabled={!isHost}
-        >
-          Установить
-        </button>
-      </div>
-
-      <div className="micro-hint">
-        YouTube, mp4 или VK embed-ссылка
-      </div>
-
-      <div className="player-stage">
-        {renderPlayer()}
-      </div>
-    </section>
-  </main>
-
-  <aside className="side-column">
-    {/* ЧАТ */}
-    <section className="card chat-card">
-      <div className="section-header">
-        <h2 className="section-title">Чат</h2>
-      </div>
-
-      <div className="chat-box modern-chat-box">
-        {messages.map((msg) => {
-          const isSystem = msg.username === "Система" || msg.system;
-
-          return (
-            <div
-              key={msg.id}
-              className={`message-item ${isSystem ? "message-system" : ""}`}
-            >
-              <div className="message-top">
-                <strong>{msg.username}</strong>
-                <span className="message-time">{msg.time}</span>
-              </div>
-              <div>{msg.message}</div>
+      <div className="room-grid">
+        <main className="main-column">
+          <section className="card player-card">
+            <div className="section-header">
+              <h2 className="section-title">Плеер</h2>
             </div>
-          );
-        })}
-        <div ref={messagesEndRef} />
-      </div>
 
-      <div className="chat-input-row">
-        <input
-          className="app-input"
-          type="text"
-          placeholder="Введите сообщение"
-          value={message}
-          onChange={(e) => setMessage(e.target.value)}
-          onKeyDown={(e) => {
-            if (e.key === "Enter") sendMessage();
-          }}
-        />
+            <div className="video-toolbar">
+              <input
+                className="app-input compact-input"
+                type="text"
+                placeholder="YouTube, mp4 или VK embed-ссылка"
+                value={inputUrl}
+                onChange={(e) => setInputUrl(e.target.value)}
+                disabled={!isHost}
+              />
 
-        <button
-          className="secondary-button send-button"
-          onClick={sendMessage}
-        >
-          Отправить
-        </button>
-      </div>
-    </section>
+              <button
+                className="primary-button"
+                onClick={handleSetVideo}
+                disabled={!isHost}
+              >
+                Установить
+              </button>
+            </div>
 
-    {/* УЧАСТНИКИ */}
-    <section className="card participants-card">
-      <div className="section-header">
-        <h2 className="section-title">Участники</h2>
+            <div className="micro-hint">
+              Вставь ссылку на видео. На телефоне чат и участники вынесены ниже
+              в отдельные панели.
+            </div>
 
-        <button
-          className="icon-button mobile-close-button"
-          onClick={() => setSidebarOpen(false)}
-          type="button"
-        >
-          ✕
-        </button>
-      </div>
+            <div className="player-stage">{renderPlayer()}</div>
+          </section>
 
-      <div className="users-list">
-        {users.map((user) => (
-          <div key={user.clientId || user.id} className="user-item">
-            <span>
-              {user.username} {!user.isOnline ? "• offline" : ""}
-            </span>
+          <div className="mobile-tab-switcher">
+            <button
+              type="button"
+              className={`mobile-tab-button ${
+                activeMobileTab === "chat" ? "is-active" : ""
+              }`}
+              onClick={() => setActiveMobileTab("chat")}
+            >
+              Чат
+            </button>
 
-            {user.clientId === hostClientId && (
-              <span className="host-badge">HOST</span>
+            <button
+              type="button"
+              className={`mobile-tab-button ${
+                activeMobileTab === "users" ? "is-active" : ""
+              }`}
+              onClick={() => setActiveMobileTab("users")}
+            >
+              Участники
+            </button>
+          </div>
+
+          <div className="mobile-panels">
+            {activeMobileTab === "chat" && (
+              <div className="mobile-panel">{renderChat()}</div>
+            )}
+
+            {activeMobileTab === "users" && (
+              <div className="mobile-panel">{renderParticipants(false)}</div>
             )}
           </div>
-        ))}
+        </main>
+
+        <aside className="side-column">
+          {renderChat()}
+          {renderParticipants(false)}
+        </aside>
       </div>
-    </section>
-  </aside>
-</div>
+
+      {renderParticipants(true)}
     </div>
   );
 }

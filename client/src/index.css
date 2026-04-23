@@ -10,6 +10,10 @@ body,
   padding: 0;
 }
 
+html {
+  -webkit-text-size-adjust: 100%;
+}
+
 body {
   font-family: Inter, Arial, sans-serif;
   background: #050505;
@@ -91,10 +95,6 @@ input {
   transition: border-color 0.2s ease, background 0.2s ease;
 }
 
-html {
-  -webkit-text-size-adjust: 100%;
-}
-
 .app-input:focus {
   border-color: #4a4a4a;
   background: #181818;
@@ -129,15 +129,13 @@ html {
   justify-content: space-between;
   align-items: flex-start;
   gap: 12px;
-  margin-bottom: 6px;
+  margin-bottom: 10px;
 }
+
 .room-topbar-left {
   display: flex;
   flex-direction: column;
   gap: 0;
-}
-
-.room-topbar-left {
   min-width: 0;
 }
 
@@ -198,7 +196,8 @@ html {
 .ghost-button,
 .primary-button,
 .secondary-button,
-.icon-button {
+.icon-button,
+.mobile-tab-button {
   border: none;
   cursor: pointer;
   transition: 0.2s ease;
@@ -207,7 +206,8 @@ html {
 .ghost-button:hover,
 .primary-button:hover,
 .secondary-button:hover,
-.icon-button:hover {
+.icon-button:hover,
+.mobile-tab-button:hover {
   transform: translateY(-1px);
 }
 
@@ -338,6 +338,7 @@ html {
   width: 100%;
   border-radius: 20px;
   background: #000;
+  display: block;
 }
 
 .player-placeholder {
@@ -385,13 +386,14 @@ html {
 }
 
 .modern-chat-box {
-  height: 250px;
+  height: 320px;
   overflow-y: auto;
   background: #080808;
   border: 1px solid #171717;
   border-radius: 18px;
   padding: 12px;
   margin-bottom: 12px;
+  overscroll-behavior: contain;
 }
 
 .message-item {
@@ -417,6 +419,7 @@ html {
 .message-time {
   color: #7a7a7a;
   font-size: 12px;
+  flex-shrink: 0;
 }
 
 .chat-input-row {
@@ -457,10 +460,13 @@ html {
   color: #000;
   font-size: 12px;
   font-weight: 800;
+  flex-shrink: 0;
 }
 
 .mobile-drawer-toggle,
-.mobile-close-button {
+.mobile-close-button,
+.mobile-tab-switcher,
+.mobile-panels {
   display: none;
 }
 
@@ -478,7 +484,7 @@ html {
   }
 
   .side-column {
-    order: 2;
+    width: 100%;
   }
 
   .player-stage .player-wrap,
@@ -489,10 +495,6 @@ html {
 
 @media (max-width: 640px) {
   .room-shell {
-    padding: 8px;
-  }
-  
-  .player-card {
     padding: 10px;
   }
 
@@ -505,7 +507,8 @@ html {
   .room-topbar {
     flex-direction: column;
     align-items: stretch;
-    gap: 12px;
+    gap: 10px;
+    margin-bottom: 10px;
   }
 
   .room-topbar-actions {
@@ -516,9 +519,23 @@ html {
     width: 100%;
   }
 
+  .brand-row {
+    justify-content: space-between;
+    margin-bottom: 2px;
+  }
+
   .room-brand {
-    font-size: 30px;
+    font-size: 28px;
     letter-spacing: 2px;
+  }
+
+  .room-meta {
+    margin-bottom: 2px;
+    font-size: 13px;
+  }
+
+  .room-status {
+    margin-top: 0;
   }
 
   .section-title {
@@ -536,13 +553,52 @@ html {
   }
 
   .room-grid {
-    display: flex;
-    flex-direction: column;
     gap: 14px;
   }
 
   .main-column {
     gap: 14px;
+  }
+
+  .side-column {
+    display: none;
+  }
+
+  .mobile-tab-switcher {
+    display: grid;
+    grid-template-columns: 1fr 1fr;
+    gap: 8px;
+  }
+
+  .mobile-tab-button {
+    padding: 12px 14px;
+    border-radius: 14px;
+    background: #121212;
+    color: #d0d0d0;
+    border: 1px solid #222;
+    font-size: 14px;
+    font-weight: 700;
+  }
+
+  .mobile-tab-button.is-active {
+    background: #fff;
+    color: #000;
+    border-color: #fff;
+  }
+
+  .mobile-panels {
+    display: block;
+  }
+
+  .mobile-panel {
+    display: block;
+  }
+
+  .mobile-drawer-toggle,
+  .mobile-close-button {
+    display: inline-flex;
+    align-items: center;
+    justify-content: center;
   }
 
   .participants-drawer.mobile-hidden {
@@ -563,20 +619,27 @@ html {
     overflow-y: auto;
   }
 
-  .mobile-drawer-toggle,
-  .mobile-close-button {
-    display: inline-flex;
-    align-items: center;
-    justify-content: center;
-  }
-
   .player-stage .player-wrap,
   .player-placeholder {
-    min-height: 230px;
+    min-height: 220px;
+  }
+
+  .player-video,
+  .player-iframe {
+    min-height: 220px;
+  }
+
+  .vk-player-wrap iframe {
+    height: 220px;
+  }
+
+  .chat-card {
+    padding-top: 14px;
   }
 
   .modern-chat-box {
-    height: 300px;
+    height: min(44vh, 360px);
+    margin-bottom: 10px;
   }
 
   .message-item,
@@ -585,23 +648,15 @@ html {
     border-radius: 12px;
   }
 
-  .room-topbar {
-  gap: 8px;
-  margin-bottom: 4px;
+  .message-top {
+    align-items: flex-start;
+  }
+
+  .message-top strong {
+    word-break: break-word;
+  }
 }
 
-.brand-row {
-  margin-bottom: 2px;
-}
-
-.room-meta {
-  margin-bottom: 2px;
-}
-
-.room-status {
-  margin-top: 0;
-}
-}
 .home-card .primary-button,
 .home-card .secondary-button {
   width: 100%;
