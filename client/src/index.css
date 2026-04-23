@@ -45,12 +45,18 @@ input {
   font-family: inherit;
 }
 
-.home-page,
-.room-page {
-  min-height: 100dvh;
-  color: var(--text);
+.home-page {
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  padding: 20px;
 }
 
+.home-card {
+  width: 100%;
+  max-width: 420px;
+  margin: 0 auto;
+}
 .room-shell {
   position: relative;
   padding: 24px;
@@ -466,13 +472,15 @@ input {
 }
 
 .chat-card {
-  padding-top: 16px;
+  display: flex;
+  flex-direction: column;
 }
 
 .modern-chat-box {
   min-height: 220px;
-  height: 320px;
+  height: 260px;
   overflow-y: auto;
+  flex: 1;
   background:
     linear-gradient(180deg, rgba(255, 255, 255, 0.025) 0%, rgba(255, 255, 255, 0.015) 100%);
   border: 1px solid var(--line);
@@ -550,9 +558,10 @@ input {
 }
 
 .chat-input-row {
-  display: grid;
-  grid-template-columns: minmax(0, 1fr) 130px;
-  gap: 10px;
+  position: sticky;
+  bottom: 0;
+  background: #0d0d0d;
+  padding-top: 10px;
 }
 
 .chat-input {
@@ -659,8 +668,10 @@ input {
 }
 
 @media (max-width: 640px) {
-  .room-shell {
-    padding: 10px;
+  .home-card .primary-button,
+  .home-card .secondary-button {
+    width: 100%;
+    margin-top: 12px;
   }
 
   .card,

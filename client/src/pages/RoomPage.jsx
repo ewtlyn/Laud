@@ -46,16 +46,6 @@ function getOrCreateClientId() {
   return created;
 }
 
-function getReplyPreviewText(replyTo) {
-  if (!replyTo) return "";
-
-  if (replyTo.type === "gif") {
-    return "GIF";
-  }
-
-  return replyTo.message || "";
-}
-
 function RoomPage() {
   const { roomId } = useParams();
   const location = useLocation();
@@ -83,14 +73,10 @@ function RoomPage() {
   const [inputUrl, setInputUrl] = useState("");
   const [messages, setMessages] = useState([]);
   const [message, setMessage] = useState("");
-  const [gifUrl, setGifUrl] = useState("");
-  const [chatMode, setChatMode] = useState("text");
-  const [replyTo, setReplyTo] = useState(null);
   const [playing, setPlaying] = useState(false);
   const [sidebarOpen, setSidebarOpen] = useState(false);
   const [playerError, setPlayerError] = useState("");
   const [isConnected, setIsConnected] = useState(socket.connected);
-  const [activeMobileTab, setActiveMobileTab] = useState("chat");
 
   useEffect(() => {
     videoUrlRef.current = videoUrl;
@@ -452,9 +438,9 @@ function RoomPage() {
   };
 
   const sendMessage = () => {
-    if (chatMode === "text" && !message.trim()) return;
-    if (chatMode === "gif" && !gifUrl.trim()) return;
+    if (!message.trim()) return;
 
+    const text = message.trim();
     const clientMessageId =
       typeof crypto !== "undefined" && crypto.randomUUID
         ? crypto.randomUUID()
@@ -463,35 +449,20 @@ function RoomPage() {
     socket.emit("send_message", {
       roomId,
       username,
-      clientMessageId,
-      type: chatMode,
-      message: chatMode === "text" ? message.trim() : "",
-      gifUrl: chatMode === "gif" ? gifUrl.trim() : "",
-      replyTo: replyTo
-        ? {
-            id: replyTo.id,
-            username: replyTo.username,
-            message: replyTo.message || "",
-            type: replyTo.type || "text",
-            gifUrl: replyTo.gifUrl || ""
-          }
-        : null
+      message: text,
+      clientMessageId
     });
 
     setMessage("");
-    setGifUrl("");
-    setReplyTo(null);
-    setChatMode("text");
-  };
-
-  const handleReply = (msg) => {
-    setReplyTo(msg);
-    setActiveMobileTab("chat");
   };
 
   const handleLeave = () => {
     leavingRef.current = true;
     navigate("/");
+  };
+
+  const handleReply = (msg) => {
+    console.log("reply", msg);
   };
 
   const renderPlayer = () => {
@@ -579,41 +550,6 @@ function RoomPage() {
         </div>
       </div>
 
-      <div className="chat-compose-switcher">
-        <button
-          type="button"
-          className={`compose-mode-btn ${chatMode === "text" ? "active" : ""}`}
-          onClick={() => setChatMode("text")}
-        >
-          Текст
-        </button>
-        <button
-          type="button"
-          className={`compose-mode-btn ${chatMode === "gif" ? "active" : ""}`}
-          onClick={() => setChatMode("gif")}
-        >
-          GIF
-        </button>
-      </div>
-
-      {replyTo && (
-        <div className="reply-preview">
-          <div className="reply-preview-head">
-            <strong>Ответ на {replyTo.username}</strong>
-            <button
-              type="button"
-              className="reply-cancel-btn"
-              onClick={() => setReplyTo(null)}
-            >
-              ✕
-            </button>
-          </div>
-          <div className="reply-preview-text">
-            {getReplyPreviewText(replyTo)}
-          </div>
-        </div>
-      )}
-
       <div className="chat-box modern-chat-box">
         {messages.length === 0 && (
           <div className="empty-state">
@@ -632,36 +568,13 @@ function RoomPage() {
             <div
               key={msg.id}
               className={`message-item ${isSystem ? "message-system" : ""}`}
+              onClick={() => handleReply(msg)}
             >
               <div className="message-top">
                 <strong>{msg.username}</strong>
                 <span className="message-time">{msg.time}</span>
               </div>
-
-              {msg.replyTo && (
-                <div className="message-reply-preview">
-                  <div className="message-reply-user">{msg.replyTo.username}</div>
-                  <div className="message-reply-text">
-                    {getReplyPreviewText(msg.replyTo)}
-                  </div>
-                </div>
-              )}
-
-              {msg.type === "gif" ? (
-                <img className="chat-gif" src={msg.gifUrl} alt="gif" />
-              ) : (
-                <div className="message-body">{msg.message}</div>
-              )}
-
-              {!isSystem && (
-                <button
-                  className="message-reply-btn"
-                  type="button"
-                  onClick={() => handleReply(msg)}
-                >
-                  Ответить
-                </button>
-              )}
+              <div className="message-body">{msg.message}</div>
             </div>
           );
         })}
@@ -669,29 +582,16 @@ function RoomPage() {
       </div>
 
       <div className="chat-input-row">
-        {chatMode === "text" ? (
-          <input
-            className="app-input chat-input"
-            type="text"
-            placeholder="Введите сообщение"
-            value={message}
-            onChange={(e) => setMessage(e.target.value)}
-            onKeyDown={(e) => {
-              if (e.key === "Enter") sendMessage();
-            }}
-          />
-        ) : (
-          <input
-            className="app-input chat-input"
-            type="text"
-            placeholder="Вставь ссылку на GIF"
-            value={gifUrl}
-            onChange={(e) => setGifUrl(e.target.value)}
-            onKeyDown={(e) => {
-              if (e.key === "Enter") sendMessage();
-            }}
-          />
-        )}
+        <input
+          className="app-input chat-input"
+          type="text"
+          placeholder="Введите сообщение"
+          value={message}
+          onChange={(e) => setMessage(e.target.value)}
+          onKeyDown={(e) => {
+            if (e.key === "Enter") sendMessage();
+          }}
+        />
 
         <button
           className="secondary-button send-button"
@@ -759,9 +659,6 @@ function RoomPage() {
 
   return (
     <div className="room-page room-shell">
-      <div className="ambient-glow ambient-glow-1" />
-      <div className="ambient-glow ambient-glow-2" />
-
       {sidebarOpen && (
         <div className="mobile-backdrop" onClick={() => setSidebarOpen(false)} />
       )}
@@ -770,7 +667,6 @@ function RoomPage() {
         <div className="room-topbar-left">
           <div className="brand-row">
             <div className="brand-lockup">
-              <div className="brand-chip">sync</div>
               <h1 className="room-brand">LAUD</h1>
             </div>
 
@@ -842,46 +738,15 @@ function RoomPage() {
             <div className="player-stage">{renderPlayer()}</div>
           </section>
 
-          <div className="mobile-tab-switcher">
-            <button
-              type="button"
-              className={`mobile-tab-button ${
-                activeMobileTab === "chat" ? "is-active" : ""
-              }`}
-              onClick={() => setActiveMobileTab("chat")}
-            >
-              Чат
-            </button>
-
-            <button
-              type="button"
-              className={`mobile-tab-button ${
-                activeMobileTab === "users" ? "is-active" : ""
-              }`}
-              onClick={() => setActiveMobileTab("users")}
-            >
-              Участники
-            </button>
-          </div>
-
-          <div className="mobile-panels">
-            {activeMobileTab === "chat" && (
-              <div className="mobile-panel">{renderChat()}</div>
-            )}
-
-            {activeMobileTab === "users" && (
-              <div className="mobile-panel">{renderParticipants(false)}</div>
-            )}
-          </div>
+          {renderChat()}
         </main>
 
         <aside className="side-column">
-          {renderChat()}
           {renderParticipants(false)}
         </aside>
       </div>
 
-      {renderParticipants(true)}
+      {sidebarOpen && renderParticipants(true)}
     </div>
   );
 }
