@@ -4,7 +4,12 @@ const cors = require("cors");
 const { Server } = require("socket.io");
 
 const app = express();
-app.use(cors({ origin: "*" }));
+
+app.use(
+  cors({
+    origin: "*"
+  })
+);
 
 const server = http.createServer(app);
 
@@ -12,180 +17,151 @@ const io = new Server(server, {
   cors: {
     origin: "*",
     methods: ["GET", "POST"]
-  },
-  transports: ["websocket", "polling"],
-  pingInterval: 10000,
-  pingTimeout: 25000,
-  connectionStateRecovery: {
-    maxDisconnectionDuration: 2 * 60 * 1000,
-    skipMiddlewares: true
   }
 });
 
 const rooms = {};
-const DISCONNECT_GRACE_MS = 30000;
-const MAX_MESSAGES = 100;
 
 app.get("/", (req, res) => {
   res.send("LAUD server is running");
 });
 
+function createId(prefix = "id") {
+  return `${prefix}_${Date.now()}_${Math.random().toString(36).slice(2, 8)}`;
+}
+
 function createSystemMessage(text) {
   return {
-    id: `sys_${Date.now()}_${Math.random().toString(36).slice(2, 8)}`,
+    id: createId("msg"),
     username: "Система",
     message: text,
+    type: "text",
+    gifUrl: "",
+    replyTo: null,
+    system: true,
     time: new Date().toLocaleTimeString(),
-    system: true
+    createdAt: Date.now()
   };
 }
 
-function ensureRoom(roomId) {
-  if (!rooms[roomId]) {
-    rooms[roomId] = {
-      hostClientId: null,
-      users: [],
-      pendingDisconnects: {},
-      messages: [],
-      videoState: {
-        isPlaying: false,
-        currentTime: 0,
-        videoUrl: "",
-        videoType: "file",
-        lastActionAt: Date.now()
-      }
+function getRoomSnapshot(roomId) {
+  const room = rooms[roomId];
+  if (!room) {
+    return {
+      ok: false
     };
   }
 
-  return rooms[roomId];
+  return {
+    ok: true,
+    users: room.users,
+    hostClientId: room.hostClientId,
+    videoState: room.videoState,
+    messages: room.messages
+  };
 }
 
-function addMessage(room, msg) {
-  room.messages.push(msg);
+function removeUserFromRoom(socket) {
+  const roomId = socket.roomId;
+  if (!roomId || !rooms[roomId]) return;
 
-  if (room.messages.length > MAX_MESSAGES) {
-    room.messages = room.messages.slice(-MAX_MESSAGES);
-  }
-}
-
-function emitRoomState(roomId) {
   const room = rooms[roomId];
-  if (!room) return;
+  const leftUserName = socket.username || "Гость";
+  const leftClientId = socket.clientId;
 
-  io.to(roomId).emit(
-    "room_users",
-    room.users.map((u) => ({
-      id: u.id,
-      clientId: u.clientId,
-      username: u.username,
-      isOnline: u.isOnline
-    }))
+  room.users = room.users.map((user) =>
+    user.clientId === leftClientId ? { ...user, isOnline: false } : user
   );
 
-  io.to(roomId).emit("host_data", {
-    hostClientId: room.hostClientId
-  });
-}
+  const onlineUsers = room.users.filter((user) => user.isOnline);
 
-function removeUserFinally(roomId, clientId) {
-  const room = rooms[roomId];
-  if (!room) return;
+  if (onlineUsers.length > 0 && room.hostClientId === leftClientId) {
+    room.hostClientId = onlineUsers[0].clientId;
 
-  const user = room.users.find((u) => u.clientId === clientId);
-  if (!user) return;
+    io.to(roomId).emit("host_data", {
+      hostClientId: room.hostClientId
+    });
 
-  room.users = room.users.filter((u) => u.clientId !== clientId);
+    const hostMessage = createSystemMessage(
+      `${onlineUsers[0].username} теперь хост комнаты`
+    );
 
-  if (room.hostClientId === clientId) {
-    const nextHost = room.users.find((u) => u.isOnline) || room.users[0] || null;
-    room.hostClientId = nextHost ? nextHost.clientId : null;
-
-    if (nextHost) {
-      const msg = createSystemMessage(`${nextHost.username} теперь хост комнаты`);
-      addMessage(room, msg);
-      io.to(roomId).emit("receive_message", msg);
-    }
+    room.messages.push(hostMessage);
+    io.to(roomId).emit("receive_message", hostMessage);
   }
 
-  emitRoomState(roomId);
+  io.to(roomId).emit("room_users", room.users);
 
-  if (room.users.length > 0) {
-    const leaveMsg = createSystemMessage(`${user.username} покинул комнату`);
-    addMessage(room, leaveMsg);
-    io.to(roomId).emit("receive_message", leaveMsg);
+  if (onlineUsers.length > 0) {
+    const leaveMessage = createSystemMessage(`${leftUserName} покинул комнату`);
+    room.messages.push(leaveMessage);
+    io.to(roomId).emit("receive_message", leaveMessage);
   }
 
-  if (room.users.length === 0) {
+  if (onlineUsers.length === 0) {
     delete rooms[roomId];
   }
-}
-
-function scheduleDisconnect(socket) {
-  const roomId = socket.roomId;
-  const clientId = socket.clientId;
-  if (!roomId || !clientId || !rooms[roomId]) return;
-
-  const room = rooms[roomId];
-  const user = room.users.find((u) => u.clientId === clientId);
-  if (!user) return;
-
-  user.isOnline = false;
-  emitRoomState(roomId);
-
-  if (room.pendingDisconnects[clientId]) {
-    clearTimeout(room.pendingDisconnects[clientId]);
-  }
-
-  room.pendingDisconnects[clientId] = setTimeout(() => {
-    delete room.pendingDisconnects[clientId];
-    removeUserFinally(roomId, clientId);
-  }, DISCONNECT_GRACE_MS);
 }
 
 io.on("connection", (socket) => {
   console.log("Пользователь подключился:", socket.id);
 
-  socket.on("join_room", ({ roomId, username, clientId }, ack) => {
+  socket.on("join_room", ({ roomId, username, clientId }, callback) => {
     if (!roomId) {
-      ack?.({ ok: false, error: "ROOM_ID_REQUIRED" });
+      callback?.({ ok: false, error: "NO_ROOM_ID" });
       return;
     }
 
     const safeUsername = (username || "Гость").trim() || "Гость";
-    const safeClientId = (clientId || socket.id).toString();
-    const room = ensureRoom(roomId);
+    const safeClientId = (clientId || createId("client")).trim();
 
     socket.join(roomId);
-    socket.roomId = roomId;
-    socket.username = safeUsername;
-    socket.clientId = safeClientId;
 
-    if (room.pendingDisconnects[safeClientId]) {
-      clearTimeout(room.pendingDisconnects[safeClientId]);
-      delete room.pendingDisconnects[safeClientId];
+    if (!rooms[roomId]) {
+      rooms[roomId] = {
+        hostClientId: safeClientId,
+        users: [],
+        messages: [],
+        videoState: {
+          isPlaying: false,
+          currentTime: 0,
+          videoUrl: "",
+          videoType: "file",
+          lastActionAt: Date.now()
+        }
+      };
     }
 
-    let user = room.users.find((u) => u.clientId === safeClientId);
+    const room = rooms[roomId];
 
-    if (user) {
-      user.id = socket.id;
-      user.username = safeUsername;
-      user.isOnline = true;
+    const existingUserIndex = room.users.findIndex(
+      (user) => user.clientId === safeClientId
+    );
+
+    if (existingUserIndex >= 0) {
+      room.users[existingUserIndex] = {
+        ...room.users[existingUserIndex],
+        id: socket.id,
+        username: safeUsername,
+        isOnline: true
+      };
     } else {
-      user = {
+      room.users.push({
         id: socket.id,
         clientId: safeClientId,
         username: safeUsername,
         isOnline: true
-      };
-      room.users.push(user);
+      });
     }
 
-    if (!room.hostClientId) {
-      room.hostClientId = safeClientId;
-    }
+    socket.roomId = roomId;
+    socket.username = safeUsername;
+    socket.clientId = safeClientId;
 
-    emitRoomState(roomId);
+    io.to(roomId).emit("room_users", room.users);
+    io.to(roomId).emit("host_data", {
+      hostClientId: room.hostClientId
+    });
 
     socket.emit("room_snapshot", {
       users: room.users,
@@ -194,201 +170,177 @@ io.on("connection", (socket) => {
       messages: room.messages
     });
 
-let user = room.users.find((u) => u.clientId === safeClientId);
-const isReconnect = Boolean(user);
+    const joinMessage = createSystemMessage(
+      `${safeUsername} присоединился к комнате`
+    );
 
-if (user) {
-  user.id = socket.id;
-  user.username = safeUsername;
-  user.isOnline = true;
-} else {
-  user = {
-    id: socket.id,
-    clientId: safeClientId,
-    username: safeUsername,
-    isOnline: true
-  };
-  room.users.push(user);
-}
+    room.messages.push(joinMessage);
+    io.to(roomId).emit("receive_message", joinMessage);
 
-if (!room.hostClientId) {
-  room.hostClientId = safeClientId;
-}
-
-emitRoomState(roomId);
-
-socket.emit("room_snapshot", {
-  users: room.users,
-  hostClientId: room.hostClientId,
-  videoState: room.videoState,
-  messages: room.messages
-});
-
-if (!isReconnect) {
-  const joinMsg = createSystemMessage(`${safeUsername} присоединился к комнате`);
-  addMessage(room, joinMsg);
-  io.to(roomId).emit("receive_message", joinMsg);
-}
-
-    ack?.({ ok: true });
+    callback?.({ ok: true });
     console.log(`${safeUsername} вошел в комнату ${roomId}`);
   });
 
+  socket.on("get_room_state", ({ roomId }, callback) => {
+    callback?.(getRoomSnapshot(roomId));
+  });
+
   socket.on("leave_room", () => {
-    if (socket.roomId && socket.clientId) {
-      removeUserFinally(socket.roomId, socket.clientId);
-    }
+    removeUserFromRoom(socket);
   });
 
-  socket.on("set_video", ({ roomId, videoUrl, videoType }, ack) => {
-    const room = rooms[roomId];
-    if (!room) {
-      ack?.({ ok: false, error: "ROOM_NOT_FOUND" });
+  socket.on("set_video", ({ roomId, videoUrl, videoType }, callback) => {
+    if (!rooms[roomId]) {
+      callback?.({ ok: false, error: "ROOM_NOT_FOUND" });
       return;
     }
 
-    if (room.hostClientId !== socket.clientId) {
-      ack?.({ ok: false, error: "ONLY_HOST_CAN_SET_VIDEO" });
+    if (rooms[roomId].hostClientId !== socket.clientId) {
+      callback?.({ ok: false, error: "NOT_HOST" });
       return;
     }
 
-    room.videoState = {
-      videoUrl: videoUrl || "",
-      videoType: videoType || "file",
-      currentTime: 0,
-      isPlaying: false,
-      lastActionAt: Date.now()
-    };
+    rooms[roomId].videoState.videoUrl = videoUrl || "";
+    rooms[roomId].videoState.videoType = videoType || "file";
+    rooms[roomId].videoState.currentTime = 0;
+    rooms[roomId].videoState.isPlaying = false;
+    rooms[roomId].videoState.lastActionAt = Date.now();
 
-    io.to(roomId).emit("video_state", room.videoState);
+    io.to(roomId).emit("video_state", rooms[roomId].videoState);
 
-    const msg = createSystemMessage(`${socket.username} установил новое видео`);
-    addMessage(room, msg);
-    io.to(roomId).emit("receive_message", msg);
+    const systemMessage = createSystemMessage(
+      `${socket.username} установил новое видео`
+    );
 
-    ack?.({ ok: true });
+    rooms[roomId].messages.push(systemMessage);
+    io.to(roomId).emit("receive_message", systemMessage);
+
+    callback?.({ ok: true });
   });
 
-  socket.on("play_video", ({ roomId, currentTime }, ack) => {
-    const room = rooms[roomId];
-    if (!room) return ack?.({ ok: false, error: "ROOM_NOT_FOUND" });
-
-    if (room.hostClientId !== socket.clientId) {
-      return ack?.({ ok: false, error: "ONLY_HOST_CAN_CONTROL_PLAYBACK" });
-    }
-
-    room.videoState.isPlaying = true;
-    room.videoState.currentTime = Number(currentTime) || 0;
-    room.videoState.lastActionAt = Date.now();
-
-    socket.to(roomId).emit("play_video", {
-      currentTime: room.videoState.currentTime,
-      emittedAt: room.videoState.lastActionAt
-    });
-
-    ack?.({ ok: true });
-  });
-
-  socket.on("pause_video", ({ roomId, currentTime }, ack) => {
-    const room = rooms[roomId];
-    if (!room) return ack?.({ ok: false, error: "ROOM_NOT_FOUND" });
-
-    if (room.hostClientId !== socket.clientId) {
-      return ack?.({ ok: false, error: "ONLY_HOST_CAN_CONTROL_PLAYBACK" });
-    }
-
-    room.videoState.isPlaying = false;
-    room.videoState.currentTime = Number(currentTime) || 0;
-    room.videoState.lastActionAt = Date.now();
-
-    socket.to(roomId).emit("pause_video", {
-      currentTime: room.videoState.currentTime,
-      emittedAt: room.videoState.lastActionAt
-    });
-
-    ack?.({ ok: true });
-  });
-
-  socket.on("seek_video", ({ roomId, currentTime }, ack) => {
-    const room = rooms[roomId];
-    if (!room) return ack?.({ ok: false, error: "ROOM_NOT_FOUND" });
-
-    if (room.hostClientId !== socket.clientId) {
-      return ack?.({ ok: false, error: "ONLY_HOST_CAN_CONTROL_PLAYBACK" });
-    }
-
-    room.videoState.currentTime = Number(currentTime) || 0;
-    room.videoState.lastActionAt = Date.now();
-
-    socket.to(roomId).emit("seek_video", {
-      currentTime: room.videoState.currentTime,
-      emittedAt: room.videoState.lastActionAt
-    });
-
-    ack?.({ ok: true });
-  });
-
-  socket.on("sync_progress", ({ roomId, currentTime, isPlaying }) => {
-    const room = rooms[roomId];
-    if (!room) return;
-    if (room.hostClientId !== socket.clientId) return;
-
-    room.videoState.currentTime = Number(currentTime) || 0;
-    room.videoState.isPlaying = Boolean(isPlaying);
-    room.videoState.lastActionAt = Date.now();
-
-    socket.to(roomId).volatile.emit("sync_progress", {
-      currentTime: room.videoState.currentTime,
-      isPlaying: room.videoState.isPlaying,
-      emittedAt: room.videoState.lastActionAt
-    });
-  });
-
-  socket.on("send_message", ({ roomId, username, message, clientMessageId }, ack) => {
-    const room = rooms[roomId];
-    if (!room) {
-      ack?.({ ok: false, error: "ROOM_NOT_FOUND" });
+  socket.on("play_video", ({ roomId, currentTime }, callback) => {
+    if (!rooms[roomId]) {
+      callback?.({ ok: false });
       return;
     }
 
-    const trimmed = (message || "").trim();
-    if (!trimmed) {
-      ack?.({ ok: false, error: "EMPTY_MESSAGE" });
-      return;
-    }
+    rooms[roomId].videoState.isPlaying = true;
+    rooms[roomId].videoState.currentTime = currentTime || 0;
+    rooms[roomId].videoState.lastActionAt = Date.now();
 
-    const payload = {
-      id: clientMessageId || `msg_${Date.now()}_${Math.random().toString(36).slice(2, 8)}`,
-      username: (username || socket.username || "Гость").trim() || "Гость",
-      message: trimmed,
-      time: new Date().toLocaleTimeString(),
-      system: false
-    };
-
-    addMessage(room, payload);
-    io.to(roomId).emit("receive_message", payload);
-    ack?.({ ok: true, messageId: payload.id });
-  });
-
-  socket.on("get_room_state", ({ roomId }, ack) => {
-    const room = rooms[roomId];
-    if (!room) {
-      ack?.({ ok: false, error: "ROOM_NOT_FOUND" });
-      return;
-    }
-
-    ack?.({
-      ok: true,
-      users: room.users,
-      hostClientId: room.hostClientId,
-      videoState: room.videoState,
-      messages: room.messages
+    io.to(roomId).emit("play_video", {
+      currentTime: currentTime || 0,
+      lastActionAt: rooms[roomId].videoState.lastActionAt
     });
+
+    callback?.({ ok: true });
   });
 
-  socket.on("disconnect", (reason) => {
-    console.log("Пользователь отключился:", socket.id, reason);
-    scheduleDisconnect(socket);
+  socket.on("pause_video", ({ roomId, currentTime }, callback) => {
+    if (!rooms[roomId]) {
+      callback?.({ ok: false });
+      return;
+    }
+
+    rooms[roomId].videoState.isPlaying = false;
+    rooms[roomId].videoState.currentTime = currentTime || 0;
+    rooms[roomId].videoState.lastActionAt = Date.now();
+
+    io.to(roomId).emit("pause_video", {
+      currentTime: currentTime || 0,
+      lastActionAt: rooms[roomId].videoState.lastActionAt
+    });
+
+    callback?.({ ok: true });
+  });
+
+  socket.on("seek_video", ({ roomId, currentTime }, callback) => {
+    if (!rooms[roomId]) {
+      callback?.({ ok: false });
+      return;
+    }
+
+    rooms[roomId].videoState.currentTime = currentTime || 0;
+    rooms[roomId].videoState.lastActionAt = Date.now();
+
+    io.to(roomId).emit("seek_video", {
+      currentTime: currentTime || 0,
+      lastActionAt: rooms[roomId].videoState.lastActionAt
+    });
+
+    callback?.({ ok: true });
+  });
+
+  socket.on("sync_progress", ({ roomId, currentTime, isPlaying }, callback) => {
+    if (!rooms[roomId]) {
+      callback?.({ ok: false });
+      return;
+    }
+
+    rooms[roomId].videoState.currentTime = currentTime || 0;
+    rooms[roomId].videoState.isPlaying = Boolean(isPlaying);
+    rooms[roomId].videoState.lastActionAt = Date.now();
+
+    socket.to(roomId).emit("sync_progress", {
+      currentTime: currentTime || 0,
+      isPlaying: Boolean(isPlaying),
+      lastActionAt: rooms[roomId].videoState.lastActionAt
+    });
+
+    callback?.({ ok: true });
+  });
+
+  socket.on(
+    "send_message",
+    ({ roomId, username, message, clientMessageId, replyTo, type, gifUrl }, callback) => {
+      if (!rooms[roomId]) {
+        callback?.({ ok: false, error: "ROOM_NOT_FOUND" });
+        return;
+      }
+
+      const safeType = type === "gif" ? "gif" : "text";
+      const safeMessage = typeof message === "string" ? message.trim() : "";
+      const safeGifUrl = typeof gifUrl === "string" ? gifUrl.trim() : "";
+
+      if (safeType === "text" && !safeMessage) {
+        callback?.({ ok: false, error: "EMPTY_TEXT" });
+        return;
+      }
+
+      if (safeType === "gif" && !safeGifUrl) {
+        callback?.({ ok: false, error: "EMPTY_GIF" });
+        return;
+      }
+
+      const payload = {
+        id: clientMessageId || createId("msg"),
+        username: (username || "Гость").trim() || "Гость",
+        type: safeType,
+        message: safeType === "text" ? safeMessage : "",
+        gifUrl: safeType === "gif" ? safeGifUrl : "",
+        replyTo: replyTo
+          ? {
+              id: replyTo.id || "",
+              username: replyTo.username || "Пользователь",
+              message: replyTo.message || "",
+              type: replyTo.type || "text",
+              gifUrl: replyTo.gifUrl || ""
+            }
+          : null,
+        time: new Date().toLocaleTimeString(),
+        createdAt: Date.now()
+      };
+
+      rooms[roomId].messages.push(payload);
+      io.to(roomId).emit("receive_message", payload);
+
+      callback?.({ ok: true });
+    }
+  );
+
+  socket.on("disconnect", () => {
+    removeUserFromRoom(socket);
+    console.log("Пользователь отключился:", socket.id);
   });
 });
 

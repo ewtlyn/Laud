@@ -46,6 +46,16 @@ function getOrCreateClientId() {
   return created;
 }
 
+function getReplyPreviewText(replyTo) {
+  if (!replyTo) return "";
+
+  if (replyTo.type === "gif") {
+    return "GIF";
+  }
+
+  return replyTo.message || "";
+}
+
 function RoomPage() {
   const { roomId } = useParams();
   const location = useLocation();
@@ -73,6 +83,9 @@ function RoomPage() {
   const [inputUrl, setInputUrl] = useState("");
   const [messages, setMessages] = useState([]);
   const [message, setMessage] = useState("");
+  const [gifUrl, setGifUrl] = useState("");
+  const [chatMode, setChatMode] = useState("text");
+  const [replyTo, setReplyTo] = useState(null);
   const [playing, setPlaying] = useState(false);
   const [sidebarOpen, setSidebarOpen] = useState(false);
   const [playerError, setPlayerError] = useState("");
@@ -185,11 +198,7 @@ function RoomPage() {
           username,
           clientId: clientIdRef.current
         },
-        (response) => {
-          if (!response?.ok) {
-            console.error("join_room failed", response);
-          }
-        }
+        () => {}
       );
     };
 
@@ -364,20 +373,11 @@ function RoomPage() {
     setPlayerError("");
     lastFileSyncSecondRef.current = -1;
 
-    socket.emit(
-      "set_video",
-      {
-        roomId,
-        videoUrl: cleanUrl,
-        videoType: type
-      },
-      (response) => {
-        if (!response?.ok) {
-          console.error("set_video failed", response);
-          alert("Не удалось установить видео");
-        }
-      }
-    );
+    socket.emit("set_video", {
+      roomId,
+      videoUrl: cleanUrl,
+      videoType: type
+    });
   };
 
   const handleFilePlay = () => {
@@ -423,8 +423,6 @@ function RoomPage() {
     });
   };
 
-  const handleYoutubeReady = () => {};
-
   const handleYoutubePlay = (currentTime) => {
     if (!isHost) return;
 
@@ -454,31 +452,41 @@ function RoomPage() {
   };
 
   const sendMessage = () => {
-    if (!message.trim()) return;
+    if (chatMode === "text" && !message.trim()) return;
+    if (chatMode === "gif" && !gifUrl.trim()) return;
 
-    const text = message.trim();
     const clientMessageId =
       typeof crypto !== "undefined" && crypto.randomUUID
         ? crypto.randomUUID()
         : `msg_${Date.now()}_${Math.random().toString(36).slice(2, 8)}`;
 
-    socket.emit(
-      "send_message",
-      {
-        roomId,
-        username,
-        message: text,
-        clientMessageId
-      },
-      (response) => {
-        if (!response?.ok) {
-          console.error("message failed", response);
-          alert("Сообщение не отправилось");
-        }
-      }
-    );
+    socket.emit("send_message", {
+      roomId,
+      username,
+      clientMessageId,
+      type: chatMode,
+      message: chatMode === "text" ? message.trim() : "",
+      gifUrl: chatMode === "gif" ? gifUrl.trim() : "",
+      replyTo: replyTo
+        ? {
+            id: replyTo.id,
+            username: replyTo.username,
+            message: replyTo.message || "",
+            type: replyTo.type || "text",
+            gifUrl: replyTo.gifUrl || ""
+          }
+        : null
+    });
 
     setMessage("");
+    setGifUrl("");
+    setReplyTo(null);
+    setChatMode("text");
+  };
+
+  const handleReply = (msg) => {
+    setReplyTo(msg);
+    setActiveMobileTab("chat");
   };
 
   const handleLeave = () => {
@@ -488,7 +496,17 @@ function RoomPage() {
 
   const renderPlayer = () => {
     if (!videoUrl) {
-      return <div className="player-placeholder">Видео пока не выбрано</div>;
+      return (
+        <div className="player-placeholder">
+          <div className="player-placeholder-inner">
+            <div className="player-placeholder-icon">▶</div>
+            <div className="player-placeholder-title">Видео пока не выбрано</div>
+            <div className="player-placeholder-text">
+              Вставь YouTube, mp4 или VK embed-ссылку, чтобы начать просмотр
+            </div>
+          </div>
+        </div>
+      );
     }
 
     if (videoType === "youtube") {
@@ -498,7 +516,6 @@ function RoomPage() {
           playing={playing}
           seekToSeconds={youtubeSeekTime}
           isHost={isHost}
-          onReady={handleYoutubeReady}
           onPlay={handleYoutubePlay}
           onPause={handleYoutubePause}
           onProgress={handleYoutubeProgress}
@@ -554,12 +571,60 @@ function RoomPage() {
   };
 
   const renderChat = () => (
-    <section className="card chat-card">
+    <section className="card chat-card soft-card">
       <div className="section-header">
-        <h2 className="section-title">Чат</h2>
+        <div>
+          <h2 className="section-title">Чат</h2>
+          <p className="section-subtitle">Общение в реальном времени</p>
+        </div>
       </div>
 
+      <div className="chat-compose-switcher">
+        <button
+          type="button"
+          className={`compose-mode-btn ${chatMode === "text" ? "active" : ""}`}
+          onClick={() => setChatMode("text")}
+        >
+          Текст
+        </button>
+        <button
+          type="button"
+          className={`compose-mode-btn ${chatMode === "gif" ? "active" : ""}`}
+          onClick={() => setChatMode("gif")}
+        >
+          GIF
+        </button>
+      </div>
+
+      {replyTo && (
+        <div className="reply-preview">
+          <div className="reply-preview-head">
+            <strong>Ответ на {replyTo.username}</strong>
+            <button
+              type="button"
+              className="reply-cancel-btn"
+              onClick={() => setReplyTo(null)}
+            >
+              ✕
+            </button>
+          </div>
+          <div className="reply-preview-text">
+            {getReplyPreviewText(replyTo)}
+          </div>
+        </div>
+      )}
+
       <div className="chat-box modern-chat-box">
+        {messages.length === 0 && (
+          <div className="empty-state">
+            <div className="empty-state-icon">💬</div>
+            <div className="empty-state-title">Пока тихо</div>
+            <div className="empty-state-text">
+              Отправь первое сообщение в комнату
+            </div>
+          </div>
+        )}
+
         {messages.map((msg) => {
           const isSystem = msg.username === "Система" || msg.system;
 
@@ -572,7 +637,31 @@ function RoomPage() {
                 <strong>{msg.username}</strong>
                 <span className="message-time">{msg.time}</span>
               </div>
-              <div>{msg.message}</div>
+
+              {msg.replyTo && (
+                <div className="message-reply-preview">
+                  <div className="message-reply-user">{msg.replyTo.username}</div>
+                  <div className="message-reply-text">
+                    {getReplyPreviewText(msg.replyTo)}
+                  </div>
+                </div>
+              )}
+
+              {msg.type === "gif" ? (
+                <img className="chat-gif" src={msg.gifUrl} alt="gif" />
+              ) : (
+                <div className="message-body">{msg.message}</div>
+              )}
+
+              {!isSystem && (
+                <button
+                  className="message-reply-btn"
+                  type="button"
+                  onClick={() => handleReply(msg)}
+                >
+                  Ответить
+                </button>
+              )}
             </div>
           );
         })}
@@ -580,16 +669,29 @@ function RoomPage() {
       </div>
 
       <div className="chat-input-row">
-        <input
-          className="app-input"
-          type="text"
-          placeholder="Введите сообщение"
-          value={message}
-          onChange={(e) => setMessage(e.target.value)}
-          onKeyDown={(e) => {
-            if (e.key === "Enter") sendMessage();
-          }}
-        />
+        {chatMode === "text" ? (
+          <input
+            className="app-input chat-input"
+            type="text"
+            placeholder="Введите сообщение"
+            value={message}
+            onChange={(e) => setMessage(e.target.value)}
+            onKeyDown={(e) => {
+              if (e.key === "Enter") sendMessage();
+            }}
+          />
+        ) : (
+          <input
+            className="app-input chat-input"
+            type="text"
+            placeholder="Вставь ссылку на GIF"
+            value={gifUrl}
+            onChange={(e) => setGifUrl(e.target.value)}
+            onKeyDown={(e) => {
+              if (e.key === "Enter") sendMessage();
+            }}
+          />
+        )}
 
         <button
           className="secondary-button send-button"
@@ -603,7 +705,7 @@ function RoomPage() {
 
   const renderParticipants = (mobileDrawer = false) => (
     <section
-      className={`card participants-card ${
+      className={`card participants-card soft-card ${
         mobileDrawer ? "participants-drawer" : ""
       } ${
         mobileDrawer
@@ -614,7 +716,10 @@ function RoomPage() {
       }`}
     >
       <div className="section-header">
-        <h2 className="section-title">Участники</h2>
+        <div>
+          <h2 className="section-title">Участники</h2>
+          <p className="section-subtitle">{users.length} в комнате</p>
+        </div>
 
         {mobileDrawer && (
           <button
@@ -630,9 +735,18 @@ function RoomPage() {
       <div className="users-list">
         {users.map((user) => (
           <div key={user.clientId || user.id} className="user-item">
-            <span>
-              {user.username} {!user.isOnline ? "• offline" : ""}
-            </span>
+            <div className="user-main">
+              <div className="user-avatar">
+                {(user.username || "?").slice(0, 1).toUpperCase()}
+              </div>
+
+              <div className="user-meta">
+                <span className="user-name">{user.username}</span>
+                <span className={`user-status ${user.isOnline === false ? "offline" : ""}`}>
+                  {user.isOnline === false ? "offline" : "online"}
+                </span>
+              </div>
+            </div>
 
             {user.clientId === hostClientId && (
               <span className="host-badge">HOST</span>
@@ -645,6 +759,9 @@ function RoomPage() {
 
   return (
     <div className="room-page room-shell">
+      <div className="ambient-glow ambient-glow-1" />
+      <div className="ambient-glow ambient-glow-2" />
+
       {sidebarOpen && (
         <div className="mobile-backdrop" onClick={() => setSidebarOpen(false)} />
       )}
@@ -652,7 +769,10 @@ function RoomPage() {
       <div className="room-topbar">
         <div className="room-topbar-left">
           <div className="brand-row">
-            <h1 className="room-brand">LAUD</h1>
+            <div className="brand-lockup">
+              <div className="brand-chip">sync</div>
+              <h1 className="room-brand">LAUD</h1>
+            </div>
 
             <button
               className="icon-button mobile-drawer-toggle"
@@ -665,25 +785,19 @@ function RoomPage() {
           </div>
 
           <div className="room-meta">
-            <span className="room-meta-item">Комната: {roomId}</span>
-            <span className="room-meta-sep">•</span>
-            <span className="room-meta-item">Вы: {username}</span>
-            {isHost && (
-              <>
-                <span className="room-meta-sep">•</span>
-                <span className="room-meta-item">Хост</span>
-              </>
-            )}
+            <span className="room-meta-pill">Комната: {roomId}</span>
+            <span className="room-meta-pill">Вы: {username}</span>
+            {isHost && <span className="room-meta-pill accent">Хост</span>}
           </div>
 
           <div className={`room-status ${isConnected ? "online" : "offline"}`}>
             <span className="status-dot" />
-            {isConnected ? "Онлайн" : "Переподключение..."}
+            {isConnected ? "Соединение активно" : "Переподключение..."}
           </div>
         </div>
 
         <div className="room-topbar-actions">
-          <button className="ghost-button" onClick={handleLeave}>
+          <button className="ghost-button leave-button" onClick={handleLeave}>
             Выйти
           </button>
         </div>
@@ -691,9 +805,14 @@ function RoomPage() {
 
       <div className="room-grid">
         <main className="main-column">
-          <section className="card player-card">
+          <section className="card player-card hero-player-card">
             <div className="section-header">
-              <h2 className="section-title">Плеер</h2>
+              <div>
+                <h2 className="section-title">Совместный просмотр</h2>
+                <p className="section-subtitle">
+                  Загрузи видео и смотри синхронно с друзьями
+                </p>
+              </div>
             </div>
 
             <div className="video-toolbar">
@@ -716,8 +835,8 @@ function RoomPage() {
             </div>
 
             <div className="micro-hint">
-              Вставь ссылку на видео. На телефоне чат и участники вынесены ниже
-              в отдельные панели.
+              Только хост может менять видео. Остальные участники автоматически
+              синхронизируются.
             </div>
 
             <div className="player-stage">{renderPlayer()}</div>
