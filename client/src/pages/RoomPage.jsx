@@ -57,9 +57,9 @@ function RoomPage() {
   const clientIdRef = useRef(getOrCreateClientId());
   const htmlVideoRef = useRef(null);
   const messagesEndRef = useRef(null);
+  const reconnectSyncTimeoutRef = useRef(null);
   const suppressHtmlEventsRef = useRef(false);
   const leavingRef = useRef(false);
-  const reconnectSyncTimeoutRef = useRef(null);
   const lastFileSyncSecondRef = useRef(-1);
   const videoUrlRef = useRef("");
   const videoTypeRef = useRef("file");
@@ -77,6 +77,7 @@ function RoomPage() {
   const [sidebarOpen, setSidebarOpen] = useState(false);
   const [playerError, setPlayerError] = useState("");
   const [isConnected, setIsConnected] = useState(socket.connected);
+  const [replyTo, setReplyTo] = useState(null);
 
   useEffect(() => {
     videoUrlRef.current = videoUrl;
@@ -454,6 +455,7 @@ function RoomPage() {
     });
 
     setMessage("");
+    setReplyTo(null);
   };
 
   const handleLeave = () => {
@@ -462,22 +464,13 @@ function RoomPage() {
   };
 
   const handleReply = (msg) => {
-    console.log("reply", msg);
+    if (msg.username === "Система" || msg.system) return;
+    setReplyTo(msg);
   };
 
   const renderPlayer = () => {
     if (!videoUrl) {
-      return (
-        <div className="player-placeholder">
-          <div className="player-placeholder-inner">
-            <div className="player-placeholder-icon">▶</div>
-            <div className="player-placeholder-title">Видео пока не выбрано</div>
-            <div className="player-placeholder-text">
-              Вставь YouTube, mp4 или VK embed-ссылку, чтобы начать просмотр
-            </div>
-          </div>
-        </div>
-      );
+      return <div className="player-placeholder">Видео пока не выбрано</div>;
     }
 
     if (videoType === "youtube") {
@@ -500,18 +493,11 @@ function RoomPage() {
         <div className="vk-player-wrap">
           <iframe
             src={videoUrl}
-            width="100%"
-            height="500"
+            title="VK Video"
+            className="player-iframe vk-frame"
             allow="autoplay; encrypted-media; fullscreen; picture-in-picture"
             allowFullScreen
             frameBorder="0"
-            title="VK Video"
-            className="player-iframe"
-            onError={() =>
-              setPlayerError(
-                "Это видео запрещено для встраивания или временно недоступно"
-              )
-            }
           />
           {playerError && <div className="player-error-inline">{playerError}</div>}
         </div>
@@ -519,36 +505,54 @@ function RoomPage() {
     }
 
     return (
-      <video
-        ref={htmlVideoRef}
-        src={videoUrl}
-        controls
-        onPlay={handleFilePlay}
-        onPause={handleFilePause}
-        onSeeked={handleFileSeeked}
-        onTimeUpdate={handleFileTimeUpdate}
-        onWaiting={() => {
-          if (!isHost) requestFreshRoomState();
-        }}
-        onStalled={() => {
-          if (!isHost) requestFreshRoomState();
-        }}
-        onPlaying={() => {
-          if (!isHost) requestFreshRoomState();
-        }}
-        className="player-video"
-      />
+      <div className="player-wrap">
+        <video
+          ref={htmlVideoRef}
+          src={videoUrl}
+          controls
+          onPlay={handleFilePlay}
+          onPause={handleFilePause}
+          onSeeked={handleFileSeeked}
+          onTimeUpdate={handleFileTimeUpdate}
+          onWaiting={() => {
+            if (!isHost) requestFreshRoomState();
+          }}
+          onStalled={() => {
+            if (!isHost) requestFreshRoomState();
+          }}
+          onPlaying={() => {
+            if (!isHost) requestFreshRoomState();
+          }}
+          className="player-video"
+        />
+      </div>
     );
   };
 
   const renderChat = () => (
-    <section className="card chat-card soft-card">
+    <section className="card chat-card">
       <div className="section-header">
         <div>
           <h2 className="section-title">Чат</h2>
           <p className="section-subtitle">Общение в реальном времени</p>
         </div>
       </div>
+
+      {replyTo && (
+        <div className="reply-preview">
+          <div className="reply-preview-top">
+            <strong>Reply to {replyTo.username}</strong>
+            <button
+              type="button"
+              className="reply-clear-button"
+              onClick={() => setReplyTo(null)}
+            >
+              ✕
+            </button>
+          </div>
+          <div className="reply-preview-text">{replyTo.message}</div>
+        </div>
+      )}
 
       <div className="chat-box modern-chat-box">
         {messages.length === 0 && (
@@ -566,7 +570,7 @@ function RoomPage() {
 
           return (
             <div
-              key={msg.id}
+              key={msg.id || `${msg.username}-${msg.time}-${msg.message}`}
               className={`message-item ${isSystem ? "message-system" : ""}`}
               onClick={() => handleReply(msg)}
             >
@@ -585,18 +589,14 @@ function RoomPage() {
         <input
           className="app-input chat-input"
           type="text"
-          placeholder="Введите сообщение"
+          placeholder={replyTo ? `Reply to ${replyTo.username}` : "Введите сообщение"}
           value={message}
           onChange={(e) => setMessage(e.target.value)}
           onKeyDown={(e) => {
             if (e.key === "Enter") sendMessage();
           }}
         />
-
-        <button
-          className="secondary-button send-button"
-          onClick={sendMessage}
-        >
+        <button className="secondary-button send-button" onClick={sendMessage}>
           Отправить
         </button>
       </div>
@@ -605,14 +605,8 @@ function RoomPage() {
 
   const renderParticipants = (mobileDrawer = false) => (
     <section
-      className={`card participants-card soft-card ${
-        mobileDrawer ? "participants-drawer" : ""
-      } ${
-        mobileDrawer
-          ? sidebarOpen
-            ? "mobile-open"
-            : "mobile-hidden"
-          : ""
+      className={`card participants-card ${
+        mobileDrawer ? "participants-drawer mobile-open" : ""
       }`}
     >
       <div className="section-header">
@@ -660,15 +654,16 @@ function RoomPage() {
   return (
     <div className="room-page room-shell">
       {sidebarOpen && (
-        <div className="mobile-backdrop" onClick={() => setSidebarOpen(false)} />
+        <>
+          <div className="mobile-backdrop" onClick={() => setSidebarOpen(false)} />
+          {renderParticipants(true)}
+        </>
       )}
 
       <div className="room-topbar">
         <div className="room-topbar-left">
           <div className="brand-row">
-            <div className="brand-lockup">
-              <h1 className="room-brand">LAUD</h1>
-            </div>
+            <h1 className="room-brand">LAUD</h1>
 
             <button
               className="icon-button mobile-drawer-toggle"
@@ -681,14 +676,20 @@ function RoomPage() {
           </div>
 
           <div className="room-meta">
-            <span className="room-meta-pill">Комната: {roomId}</span>
-            <span className="room-meta-pill">Вы: {username}</span>
-            {isHost && <span className="room-meta-pill accent">Хост</span>}
+            <span className="room-meta-item">Комната: {roomId}</span>
+            <span className="room-meta-sep">•</span>
+            <span className="room-meta-item">Вы: {username}</span>
+            {isHost && (
+              <>
+                <span className="room-meta-sep">•</span>
+                <span className="room-meta-item">Хост</span>
+              </>
+            )}
           </div>
 
           <div className={`room-status ${isConnected ? "online" : "offline"}`}>
             <span className="status-dot" />
-            {isConnected ? "Соединение активно" : "Переподключение..."}
+            {isConnected ? "Онлайн" : "Переподключение..."}
           </div>
         </div>
 
@@ -701,14 +702,9 @@ function RoomPage() {
 
       <div className="room-grid">
         <main className="main-column">
-          <section className="card player-card hero-player-card">
+          <section className="card player-card">
             <div className="section-header">
-              <div>
-                <h2 className="section-title">Совместный просмотр</h2>
-                <p className="section-subtitle">
-                  Загрузи видео и смотри синхронно с друзьями
-                </p>
-              </div>
+              <h2 className="section-title">Плеер</h2>
             </div>
 
             <div className="video-toolbar">
@@ -731,8 +727,7 @@ function RoomPage() {
             </div>
 
             <div className="micro-hint">
-              Только хост может менять видео. Остальные участники автоматически
-              синхронизируются.
+              Только хост может менять видео. Остальные участники автоматически синхронизируются.
             </div>
 
             <div className="player-stage">{renderPlayer()}</div>
@@ -745,8 +740,6 @@ function RoomPage() {
           {renderParticipants(false)}
         </aside>
       </div>
-
-      {sidebarOpen && renderParticipants(true)}
     </div>
   );
 }
