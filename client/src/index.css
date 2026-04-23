@@ -489,7 +489,11 @@ html {
 
 @media (max-width: 640px) {
   .room-shell {
-    padding: 14px;
+    padding: 8px;
+  }
+  
+  .player-card {
+    padding: 10px;
   }
 
   .home-card,
