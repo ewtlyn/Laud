@@ -5,11 +5,21 @@ function extractVideoId(url) {
     const parsed = new URL(url);
 
     if (parsed.hostname.includes("youtu.be")) {
-      return parsed.pathname.slice(1);
+      return parsed.pathname.split("/").filter(Boolean)[0] || null;
     }
 
     if (parsed.hostname.includes("youtube.com")) {
-      return parsed.searchParams.get("v");
+      if (parsed.pathname === "/watch") {
+        return parsed.searchParams.get("v");
+      }
+
+      if (parsed.pathname.startsWith("/embed/")) {
+        return parsed.pathname.split("/embed/")[1]?.split(/[?/&]/)[0] || null;
+      }
+
+      if (parsed.pathname.startsWith("/shorts/")) {
+        return parsed.pathname.split("/shorts/")[1]?.split(/[?/&]/)[0] || null;
+      }
     }
 
     return null;
@@ -68,10 +78,9 @@ export default function YouTubeSyncPlayer({
   const mountRef = useRef(null);
   const playerRef = useRef(null);
   const progressIntervalRef = useRef(null);
-  const lastAppliedSeekRef = useRef(-1);
   const suppressEventsRef = useRef(false);
   const readyRef = useRef(false);
-  const lastProgressSentRef = useRef(0);
+  const lastProgressSentRef = useRef(-1);
   const [errorText, setErrorText] = useState("");
 
   const onReadyRef = useRef(onReady);
@@ -104,6 +113,7 @@ export default function YouTubeSyncPlayer({
     let isMounted = true;
     readyRef.current = false;
     setErrorText("");
+    lastProgressSentRef.current = -1;
 
     const videoId = extractVideoId(videoUrl);
 
@@ -124,14 +134,15 @@ export default function YouTubeSyncPlayer({
         }
 
         mountRef.current.innerHTML = "";
+
         const playerNode = document.createElement("div");
         playerNode.style.width = "100%";
         playerNode.style.height = "100%";
         mountRef.current.appendChild(playerNode);
 
         playerRef.current = new YT.Player(playerNode, {
-          width: 640,
-          height: 360,
+          width: "100%",
+          height: "100%",
           videoId,
           playerVars: {
             autoplay: 0,
@@ -139,8 +150,8 @@ export default function YouTubeSyncPlayer({
             rel: 0,
             modestbranding: 1,
             playsinline: 1,
-            origin: window.location.origin,
-            enablejsapi: 1
+            enablejsapi: 1,
+            origin: window.location.origin
           },
           events: {
             onReady: () => {
@@ -220,35 +231,44 @@ export default function YouTubeSyncPlayer({
     const player = playerRef.current;
     if (!player || !readyRef.current) return;
 
-    const nextSeek = Number(seekToSeconds) || 0;
-    const roundedSeek = Math.floor(nextSeek);
-
-    if (roundedSeek !== lastAppliedSeekRef.current) {
-      lastAppliedSeekRef.current = roundedSeek;
-      suppressEventsRef.current = true;
-
-      try {
-        player.seekTo(nextSeek, true);
-      } catch {}
-
-      setTimeout(() => {
-        suppressEventsRef.current = false;
-      }, 250);
-    }
-
-    suppressEventsRef.current = true;
+    let releaseTimer = null;
 
     try {
-      if (playing) {
+      const currentTime = Number(player.getCurrentTime?.() || 0);
+      const targetTime = Number(seekToSeconds || 0);
+      const diff = Math.abs(currentTime - targetTime);
+
+      const state = typeof player.getPlayerState === "function"
+        ? player.getPlayerState()
+        : null;
+
+      const isActuallyPlaying = state === window.YT?.PlayerState?.PLAYING;
+      const isActuallyPaused = state === window.YT?.PlayerState?.PAUSED;
+
+      suppressEventsRef.current = true;
+
+      // Ищем только если реально есть заметный рассинхрон
+      if (diff > 2) {
+        player.seekTo(targetTime, true);
+      }
+
+      // play/pause дёргаем только если состояние реально не совпадает
+      if (playing && !isActuallyPlaying) {
         player.playVideo();
-      } else {
+      }
+
+      if (!playing && !isActuallyPaused) {
         player.pauseVideo();
       }
+
+      releaseTimer = setTimeout(() => {
+        suppressEventsRef.current = false;
+      }, 300);
     } catch {}
 
-    setTimeout(() => {
-      suppressEventsRef.current = false;
-    }, 250);
+    return () => {
+      if (releaseTimer) clearTimeout(releaseTimer);
+    };
   }, [playing, seekToSeconds]);
 
   useEffect(() => {

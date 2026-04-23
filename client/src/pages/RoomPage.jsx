@@ -64,6 +64,8 @@ function RoomPage() {
   const videoUrlRef = useRef("");
   const videoTypeRef = useRef("file");
   const playingRef = useRef(false);
+  const youtubeSeekRef = useRef(0);
+  const lastRemoteSyncRef = useRef(0);
 
   const [users, setUsers] = useState([]);
   const [hostClientId, setHostClientId] = useState("");
@@ -90,6 +92,10 @@ function RoomPage() {
   useEffect(() => {
     playingRef.current = playing;
   }, [playing]);
+
+  useEffect(() => {
+    youtubeSeekRef.current = youtubeSeekTime;
+  }, [youtubeSeekTime]);
 
   useEffect(() => {
     const handleResize = () => {
@@ -132,7 +138,12 @@ function RoomPage() {
     setPlayerError("");
 
     if (nextType === "youtube") {
-      setYoutubeSeekTime(expectedTime);
+      const currentSeek = youtubeSeekRef.current || 0;
+      const diff = Math.abs(currentSeek - expectedTime);
+
+      if (diff > 2) {
+        setYoutubeSeekTime(expectedTime);
+      }
       return;
     }
 
@@ -143,13 +154,13 @@ function RoomPage() {
         const current = Number(htmlVideoRef.current.currentTime) || 0;
         const diff = Math.abs(current - expectedTime);
 
-        if (diff > 1.5) {
+        if (diff > 2) {
           htmlVideoRef.current.currentTime = expectedTime;
         }
 
-        if (state.isPlaying) {
+        if (state.isPlaying && htmlVideoRef.current.paused) {
           htmlVideoRef.current.play().catch(() => {});
-        } else {
+        } else if (!state.isPlaying && !htmlVideoRef.current.paused) {
           htmlVideoRef.current.pause();
         }
       } catch {}
@@ -255,8 +266,19 @@ function RoomPage() {
       });
     };
 
-    const onSyncProgress = ({ currentTime, isPlaying, lastActionAt, emittedAt }) => {
+    const onSyncProgress = ({
+      currentTime,
+      isPlaying,
+      lastActionAt,
+      emittedAt
+    }) => {
       if (isHost) return;
+
+      const now = Date.now();
+
+      // Не применяем входящий sync слишком часто
+      if (now - lastRemoteSyncRef.current < 1200) return;
+      lastRemoteSyncRef.current = now;
 
       const next = getExpectedTime({
         currentTime,
@@ -266,9 +288,13 @@ function RoomPage() {
 
       if (videoTypeRef.current === "youtube") {
         setPlaying(Boolean(isPlaying));
-        setYoutubeSeekTime((prev) => {
-          return Math.abs(prev - next) > 1.5 ? next : prev;
-        });
+
+        const localSeek = youtubeSeekRef.current || 0;
+        const diff = Math.abs(localSeek - next);
+
+        if (diff > 2) {
+          setYoutubeSeekTime(next);
+        }
         return;
       }
 
@@ -279,13 +305,13 @@ function RoomPage() {
         suppressHtmlEventsRef.current = true;
 
         try {
-          if (diff > 1.5) {
+          if (diff > 2) {
             htmlVideoRef.current.currentTime = next;
           }
 
-          if (isPlaying) {
+          if (isPlaying && htmlVideoRef.current.paused) {
             htmlVideoRef.current.play().catch(() => {});
-          } else {
+          } else if (!isPlaying && !htmlVideoRef.current.paused) {
             htmlVideoRef.current.pause();
           }
         } catch {}
@@ -359,6 +385,8 @@ function RoomPage() {
     setYoutubeSeekTime(0);
     setPlayerError("");
     lastFileSyncSecondRef.current = -1;
+    youtubeSeekRef.current = 0;
+    lastRemoteSyncRef.current = 0;
 
     socket.emit("set_video", {
       roomId,
