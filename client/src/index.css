@@ -691,74 +691,134 @@ input {
 }
 
 @media (max-width: 640px) {
-  .room-shell {
-    padding: 10px;
-  }
-
   .home-card,
   .card {
     border-radius: 20px;
     padding: 14px;
   }
 
+  /* Топбар — компактная одна строка */
+  .room-shell {
+    padding: 8px 10px 0;
+  }
+
   .room-topbar {
-    flex-direction: column;
-    align-items: stretch;
-    gap: 10px;
-    margin-bottom: 10px;
+    flex-direction: row;
+    align-items: center;
+    justify-content: space-between;
+    gap: 8px;
+    margin-bottom: 8px;
+    flex-wrap: nowrap;
+  }
+
+  .room-topbar-left {
+    min-width: 0;
+    flex: 1;
   }
 
   .brand-row {
-    justify-content: space-between;
+    justify-content: flex-start;
+    gap: 8px;
     margin-bottom: 2px;
   }
 
   .room-brand {
-    font-size: 28px;
+    font-size: 22px;
     letter-spacing: 2px;
   }
 
   .room-meta {
+    font-size: 11px;
+    gap: 4px;
     margin-bottom: 2px;
+    flex-wrap: nowrap;
+    overflow: hidden;
+    white-space: nowrap;
+    text-overflow: ellipsis;
+  }
+
+  .room-status {
+    font-size: 11px;
+  }
+
+  .room-topbar-actions {
+    flex-shrink: 0;
+    width: auto;
+  }
+
+  .leave-button {
+    width: auto !important;
+    min-width: 0;
+    padding: 8px 12px;
     font-size: 13px;
   }
 
-  .room-topbar-actions,
-  .ghost-button,
-  .primary-button,
-  .secondary-button {
+  /* Кнопки на хоум-странице — полная ширина, в комнате — нет */
+  .home-card .primary-button,
+  .home-card .secondary-button,
+  .home-card .ghost-button {
     width: 100%;
   }
 
-  .video-toolbar,
+  .video-toolbar {
+    grid-template-columns: 1fr auto;
+    gap: 8px;
+  }
+
   .chat-input-row {
-    grid-template-columns: 1fr;
-    gap: 10px;
+    grid-template-columns: 1fr auto;
+    gap: 8px;
+  }
+
+  .send-button {
+    min-width: 0;
+    padding: 12px 14px;
+    white-space: nowrap;
   }
 
   .section-title {
-    font-size: 22px;
+    font-size: 20px;
+  }
+
+  /* Прячем заголовок плеера — экономим ~45px */
+  .player-card .section-header {
+    display: none;
+  }
+
+  .player-card {
+    padding: 10px 10px 12px;
   }
 
   .micro-hint {
-    margin-bottom: 10px;
+    margin-bottom: 8px;
+    font-size: 11px;
+  }
+
+  /* Компактный заголовок чата — прячем субтайтл */
+  .mobile-chat-only .section-header {
+    margin-bottom: 8px;
+  }
+
+  .mobile-chat-only .section-subtitle {
+    display: none;
+  }
+
+  /* Чат — высота авто через flex (убираем фиксированные px) */
+  .modern-chat-box {
+    height: auto;
+    max-height: none;
   }
 
   .player-wrap,
   .vk-frame,
   .player-video,
   .player-iframe {
-    border-radius: 16px;
+    border-radius: 14px;
   }
 
   .player-placeholder {
-    min-height: 200px;
-    border-radius: 16px;
-  }
-
-  .modern-chat-box {
-    height: 220px;
-    max-height: 220px;
+    min-height: 180px;
+    border-radius: 14px;
   }
 
   .participants-drawer.mobile-open {
