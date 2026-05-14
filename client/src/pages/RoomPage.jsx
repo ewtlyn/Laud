@@ -90,6 +90,7 @@ function RoomPage() {
   const clientIdRef = useRef(getOrCreateClientId());
   const htmlVideoRef = useRef(null);
   const messagesEndRef = useRef(null);
+  const messagesEndRef2 = useRef(null);
   const reconnectSyncTimeoutRef = useRef(null);
   const suppressHtmlEventsRef = useRef(false);
   const leavingRef = useRef(false);
@@ -142,6 +143,24 @@ function RoomPage() {
 
     window.addEventListener("resize", handleResize);
     return () => window.removeEventListener("resize", handleResize);
+  }, []);
+
+  useEffect(() => {
+    const mq = window.matchMedia("(max-width: 980px)");
+    const apply = (mobile) => {
+      document.documentElement.style.height = mobile ? "100%" : "";
+      document.body.style.height = mobile ? "100%" : "";
+      document.body.style.overflow = mobile ? "hidden" : "";
+    };
+    apply(mq.matches);
+    const handler = (e) => apply(e.matches);
+    mq.addEventListener("change", handler);
+    return () => {
+      mq.removeEventListener("change", handler);
+      document.documentElement.style.height = "";
+      document.body.style.height = "";
+      document.body.style.overflow = "";
+    };
   }, []);
 
   const isHost = useMemo(() => {
@@ -406,6 +425,7 @@ function RoomPage() {
 
   useEffect(() => {
     messagesEndRef.current?.scrollIntoView({ behavior: "smooth" });
+    messagesEndRef2.current?.scrollIntoView({ behavior: "smooth" });
   }, [messages]);
 
   const handleSetVideo = () => {
@@ -593,7 +613,7 @@ function RoomPage() {
     );
   };
 
-  const renderChat = () => (
+  const renderChat = (endRef = messagesEndRef) => (
     <section className="card chat-card">
       <div className="section-header">
         <div>
@@ -646,7 +666,7 @@ function RoomPage() {
             </div>
           );
         })}
-        <div ref={messagesEndRef} />
+        <div ref={endRef} />
       </div>
 
       <div className="chat-input-row">
@@ -700,9 +720,7 @@ function RoomPage() {
 
               <div className="user-meta">
                 <span className="user-name">{user.username}</span>
-                <span className={`user-status ${user.isOnline === false ? "offline" : ""}`}>
-                  {user.isOnline === false ? "offline" : "online"}
-                </span>
+                <span className="user-status">online</span>
               </div>
             </div>
 
@@ -798,13 +816,13 @@ function RoomPage() {
           </section>
 
           <div className="mobile-chat-only">
-            {renderChat()}
+            {renderChat(messagesEndRef)}
           </div>
         </main>
 
         <aside className="side-column">
           {renderParticipants(false)}
-          {renderChat()}
+          {renderChat(messagesEndRef2)}
         </aside>
       </div>
     </div>

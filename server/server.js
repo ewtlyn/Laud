@@ -125,11 +125,9 @@ function removeUserFromRoom(socket) {
   const leftUserName = socket.username || "Гость";
   const leftClientId = socket.clientId;
 
-  room.users = room.users.map((user) =>
-    user.clientId === leftClientId ? { ...user, isOnline: false } : user
-  );
+  room.users = room.users.filter((user) => user.clientId !== leftClientId);
 
-  const onlineUsers = room.users.filter((user) => user.isOnline);
+  const onlineUsers = room.users;
 
   if (onlineUsers.length > 0 && room.hostClientId === leftClientId) {
     room.hostClientId = onlineUsers[0].clientId;

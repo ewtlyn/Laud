@@ -611,7 +611,10 @@ input {
 
 @media (max-width: 980px) {
   .mobile-chat-only {
-    display: block;
+    display: flex;
+    flex-direction: column;
+    flex: 1;
+    min-height: 0;
   }
 
   .room-grid {
@@ -631,9 +634,7 @@ input {
   .player-placeholder {
     min-height: 220px;
   }
-}
 
-@media (max-width: 980px) {
   /* Фиксируем страницу по высоте — клавиатура не двигает видео */
   .room-shell {
     height: 100dvh;
@@ -649,31 +650,43 @@ input {
   .room-grid {
     flex: 1;
     min-height: 0;
-    overflow-y: auto;
-    overflow-x: hidden;
-  }
-
-  .main-column {
+    overflow: hidden;
     display: flex;
     flex-direction: column;
   }
 
-  /* Чат на мобиле — сообщения растягиваются, инпут прилипает снизу */
+  .main-column {
+    flex: 1;
+    min-height: 0;
+    overflow: hidden;
+    display: flex;
+    flex-direction: column;
+  }
+
+  .player-card {
+    flex-shrink: 0;
+  }
+
+  /* Чат: сообщения занимают оставшееся место, инпут всегда снизу */
   .mobile-chat-only .chat-card {
+    flex: 1;
+    min-height: 0;
+    overflow: hidden;
     display: flex;
     flex-direction: column;
   }
 
   .mobile-chat-only .modern-chat-box {
-    height: 200px;
+    flex: 1;
+    min-height: 0;
+    height: auto !important;
+    max-height: none !important;
+    overflow-y: auto;
   }
 
   .mobile-chat-only .chat-input-row {
-    position: sticky;
-    bottom: 0;
-    background: #0d0d0d;
-    padding-top: 8px;
-    padding-bottom: env(safe-area-inset-bottom, 0px);
+    flex-shrink: 0;
+    padding-bottom: max(8px, env(safe-area-inset-bottom));
   }
 }
 
