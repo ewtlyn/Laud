@@ -14,6 +14,18 @@ const socket = io(SERVER_URL, {
   transports: ["websocket", "polling"]
 });
 
+function normalizeVkUrl(url) {
+  if (!url) return url;
+  if (url.includes("video_ext.php")) return url;
+
+  const match = url.match(/video(-?\d+)_(\d+)/);
+  if (match) {
+    return `https://vk.com/video_ext.php?oid=${match[1]}&id=${match[2]}`;
+  }
+
+  return url;
+}
+
 function detectVideoType(url) {
   if (!url) return "file";
 
@@ -25,12 +37,33 @@ function detectVideoType(url) {
 
   if (
     lowerUrl.includes("vk.com/video_ext.php") ||
-    lowerUrl.includes("vkvideo.ru/video_ext.php")
+    lowerUrl.includes("vkvideo.ru/video_ext.php") ||
+    lowerUrl.includes("vk.com/video") ||
+    lowerUrl.includes("vkvideo.ru/video")
   ) {
     return "vk";
   }
 
   return "file";
+}
+
+function extractYoutubeId(url) {
+  try {
+    const parsed = new URL(url);
+    if (parsed.hostname.includes("youtu.be")) {
+      return parsed.pathname.split("/").filter(Boolean)[0] || null;
+    }
+    if (parsed.hostname.includes("youtube.com")) {
+      if (parsed.pathname === "/watch") return parsed.searchParams.get("v");
+      if (parsed.pathname.startsWith("/embed/"))
+        return parsed.pathname.split("/embed/")[1]?.split(/[?/&]/)[0] || null;
+      if (parsed.pathname.startsWith("/shorts/"))
+        return parsed.pathname.split("/shorts/")[1]?.split(/[?/&]/)[0] || null;
+    }
+    return null;
+  } catch {
+    return null;
+  }
 }
 
 function getOrCreateClientId() {
@@ -80,6 +113,9 @@ function RoomPage() {
   const [playerError, setPlayerError] = useState("");
   const [isConnected, setIsConnected] = useState(socket.connected);
   const [replyTo, setReplyTo] = useState(null);
+  const [useYoutubeProxy, setUseYoutubeProxy] = useState(
+    () => localStorage.getItem("laud_yt_proxy") === "1"
+  );
 
   useEffect(() => {
     videoUrlRef.current = videoUrl;
@@ -376,7 +412,7 @@ function RoomPage() {
     if (!isHost) return;
     if (!inputUrl.trim()) return;
 
-    const cleanUrl = inputUrl.trim();
+    const cleanUrl = normalizeVkUrl(inputUrl.trim());
     const type = detectVideoType(cleanUrl);
 
     setVideoUrl(cleanUrl);
@@ -456,13 +492,13 @@ function RoomPage() {
     });
   };
 
-  const handleYoutubeProgress = (currentTime) => {
+  const handleYoutubeProgress = (currentTime, isPlaying) => {
     if (!isHost) return;
 
     socket.emit("sync_progress", {
       roomId,
       currentTime,
-      isPlaying: true
+      isPlaying: isPlaying ?? playingRef.current
     });
   };
 
@@ -502,6 +538,29 @@ function RoomPage() {
     }
 
     if (videoType === "youtube") {
+      if (useYoutubeProxy) {
+        const videoId = extractYoutubeId(videoUrl);
+        if (!videoId) {
+          return <div className="player-error">Не удалось распознать YouTube-ссылку</div>;
+        }
+        return (
+          <div className="player-wrap">
+            <video
+              ref={htmlVideoRef}
+              src={`${SERVER_URL}/api/youtube-stream/${videoId}`}
+              controls
+              onPlay={handleFilePlay}
+              onPause={handleFilePause}
+              onSeeked={handleFileSeeked}
+              onTimeUpdate={handleFileTimeUpdate}
+              onWaiting={() => { if (!isHost) requestFreshRoomState(); }}
+              onStalled={() => { if (!isHost) requestFreshRoomState(); }}
+              className="player-video"
+            />
+          </div>
+        );
+      }
+
       return (
         <YouTubeSyncPlayer
           videoUrl={videoUrl}
@@ -739,7 +798,7 @@ function RoomPage() {
               <input
                 className="app-input compact-input"
                 type="text"
-                placeholder="YouTube, mp4 или VK embed-ссылка"
+                placeholder="YouTube, mp4 или ссылка на видео VK"
                 value={inputUrl}
                 onChange={(e) => setInputUrl(e.target.value)}
                 disabled={!isHost}
@@ -756,6 +815,19 @@ function RoomPage() {
 
             <div className="micro-hint">
               Только хост может менять видео. Остальные участники автоматически синхронизируются.
+              {" "}
+              <label style={{ cursor: "pointer", userSelect: "none" }}>
+                <input
+                  type="checkbox"
+                  checked={useYoutubeProxy}
+                  onChange={(e) => {
+                    setUseYoutubeProxy(e.target.checked);
+                    localStorage.setItem("laud_yt_proxy", e.target.checked ? "1" : "0");
+                  }}
+                  style={{ marginRight: 4 }}
+                />
+                YouTube через прокси (для РФ)
+              </label>
             </div>
 
             <div className="player-stage">{renderPlayer()}</div>

@@ -282,10 +282,12 @@ export default function YouTubeSyncPlayer({
       try {
         const currentTime = playerRef.current?.getCurrentTime?.() || 0;
         const rounded = Math.floor(currentTime);
+        const state = playerRef.current?.getPlayerState?.();
+        const isPlaying = state === window.YT?.PlayerState?.PLAYING;
 
-        if (rounded !== lastProgressSentRef.current) {
+        if (rounded !== lastProgressSentRef.current || isPlaying) {
           lastProgressSentRef.current = rounded;
-          onProgressRef.current?.(currentTime);
+          onProgressRef.current?.(currentTime, isPlaying);
         }
       } catch {}
     }, 1500);

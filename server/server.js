@@ -2,6 +2,7 @@ const express = require("express");
 const http = require("http");
 const cors = require("cors");
 const { Server } = require("socket.io");
+const ytdl = require("@distube/ytdl-core");
 
 const app = express();
 
@@ -24,6 +25,61 @@ const rooms = {};
 
 app.get("/", (req, res) => {
   res.send("LAUD server is running");
+});
+
+app.get("/api/youtube-stream/:videoId", async (req, res) => {
+  const { videoId } = req.params;
+
+  if (!ytdl.validateID(videoId)) {
+    return res.status(400).json({ error: "Invalid video ID" });
+  }
+
+  try {
+    const info = await ytdl.getInfo(videoId);
+    const format = ytdl.chooseFormat(info.formats, {
+      quality: "highestvideo",
+      filter: "audioandvideo"
+    });
+
+    const contentLength = parseInt(format.contentLength || "0", 10);
+    const mimeType = format.mimeType?.split(";")[0] || "video/mp4";
+    const rangeHeader = req.headers.range;
+
+    if (rangeHeader && contentLength) {
+      const [startStr, endStr] = rangeHeader.replace(/bytes=/, "").split("-");
+      const start = parseInt(startStr, 10);
+      const end = endStr ? parseInt(endStr, 10) : contentLength - 1;
+
+      res.writeHead(206, {
+        "Content-Range": `bytes ${start}-${end}/${contentLength}`,
+        "Accept-Ranges": "bytes",
+        "Content-Length": end - start + 1,
+        "Content-Type": mimeType,
+        "Cache-Control": "no-cache"
+      });
+
+      ytdl(`https://www.youtube.com/watch?v=${videoId}`, {
+        format,
+        range: { start, end }
+      }).pipe(res);
+    } else {
+      const headers = {
+        "Content-Type": mimeType,
+        "Cache-Control": "no-cache"
+      };
+      if (contentLength) {
+        headers["Content-Length"] = contentLength;
+        headers["Accept-Ranges"] = "bytes";
+      }
+      res.writeHead(200, headers);
+      ytdl(`https://www.youtube.com/watch?v=${videoId}`, { format }).pipe(res);
+    }
+  } catch (err) {
+    console.error("YouTube proxy error:", err.message);
+    if (!res.headersSent) {
+      res.status(500).json({ error: "Failed to proxy video" });
+    }
+  }
 });
 
 function createId(prefix = "id") {
