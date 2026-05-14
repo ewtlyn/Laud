@@ -588,25 +588,30 @@ function RoomPage() {
       );
     }
 
+    const revertToHostState = () => {
+      suppressHtmlEventsRef.current = true;
+      const vid = htmlVideoRef.current;
+      if (!vid) return;
+      if (playingRef.current && vid.paused) vid.play().catch(() => {});
+      if (!playingRef.current && !vid.paused) vid.pause();
+      setTimeout(() => { suppressHtmlEventsRef.current = false; }, 300);
+    };
+
     return (
       <div className="player-wrap">
         <video
           ref={htmlVideoRef}
           src={videoUrl}
           controls
-          onPlay={handleFilePlay}
-          onPause={handleFilePause}
-          onSeeked={handleFileSeeked}
+          onPlay={() => isHost ? handleFilePlay() : revertToHostState()}
+          onPause={() => isHost ? handleFilePause() : revertToHostState()}
+          onSeeked={() => {
+            if (isHost) { handleFileSeeked(); }
+            else { requestFreshRoomState(); }
+          }}
           onTimeUpdate={handleFileTimeUpdate}
-          onWaiting={() => {
-            if (!isHost) requestFreshRoomState();
-          }}
-          onStalled={() => {
-            if (!isHost) requestFreshRoomState();
-          }}
-          onPlaying={() => {
-            if (!isHost) requestFreshRoomState();
-          }}
+          onWaiting={() => { if (!isHost) requestFreshRoomState(); }}
+          onStalled={() => { if (!isHost) requestFreshRoomState(); }}
           className="player-video"
         />
       </div>
@@ -789,27 +794,40 @@ function RoomPage() {
               <h2 className="section-title">Плеер</h2>
             </div>
 
-            <div className="video-toolbar">
-              <input
-                className="app-input compact-input"
-                type="text"
-                placeholder="YouTube, mp4 или ссылка на видео VK"
-                value={inputUrl}
-                onChange={(e) => setInputUrl(e.target.value)}
-                disabled={!isHost}
-              />
+            {isHost && (
+              <div className="video-toolbar">
+                <input
+                  className="app-input compact-input"
+                  type="text"
+                  placeholder="YouTube, mp4 или ссылка на видео VK"
+                  value={inputUrl}
+                  onChange={(e) => setInputUrl(e.target.value)}
+                />
 
-              <button
-                className="primary-button"
-                onClick={handleSetVideo}
-                disabled={!isHost}
-              >
-                Установить
-              </button>
-            </div>
+                <button
+                  className="primary-button"
+                  onClick={handleSetVideo}
+                >
+                  Установить
+                </button>
+              </div>
+            )}
 
             <div className="micro-hint">
-              Только хост может менять видео. Остальные участники автоматически синхронизируются.
+              {isHost ? "Вставьте ссылку и нажмите Установить." : "Хост управляет видео. Вы синхронизированы."}
+              {" "}
+              <label style={{ cursor: "pointer", userSelect: "none" }}>
+                <input
+                  type="checkbox"
+                  checked={useYoutubeProxy}
+                  onChange={(e) => {
+                    setUseYoutubeProxy(e.target.checked);
+                    localStorage.setItem("laud_yt_proxy", e.target.checked ? "1" : "0");
+                  }}
+                  style={{ marginRight: 4 }}
+                />
+                YouTube через прокси (для РФ)
+              </label>
             </div>
 
             <div className="player-stage">{renderPlayer()}</div>

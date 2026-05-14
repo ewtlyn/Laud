@@ -34,12 +34,15 @@ app.get("/api/youtube-stream/:videoId", async (req, res) => {
     return res.status(400).json({ error: "Invalid video ID" });
   }
 
+  const corsHeaders = {
+    "Access-Control-Allow-Origin": "*",
+    "Access-Control-Allow-Methods": "GET",
+    "Access-Control-Allow-Headers": "Range"
+  };
+
   try {
     const info = await ytdl.getInfo(videoId);
-    const format = ytdl.chooseFormat(info.formats, {
-      quality: "highestvideo",
-      filter: "audioandvideo"
-    });
+    const format = ytdl.chooseFormat(info.formats, { filter: "audioandvideo" });
 
     const contentLength = parseInt(format.contentLength || "0", 10);
     const mimeType = format.mimeType?.split(";")[0] || "video/mp4";
@@ -51,6 +54,7 @@ app.get("/api/youtube-stream/:videoId", async (req, res) => {
       const end = endStr ? parseInt(endStr, 10) : contentLength - 1;
 
       res.writeHead(206, {
+        ...corsHeaders,
         "Content-Range": `bytes ${start}-${end}/${contentLength}`,
         "Accept-Ranges": "bytes",
         "Content-Length": end - start + 1,
@@ -64,6 +68,7 @@ app.get("/api/youtube-stream/:videoId", async (req, res) => {
       }).pipe(res);
     } else {
       const headers = {
+        ...corsHeaders,
         "Content-Type": mimeType,
         "Cache-Control": "no-cache"
       };
@@ -77,7 +82,7 @@ app.get("/api/youtube-stream/:videoId", async (req, res) => {
   } catch (err) {
     console.error("YouTube proxy error:", err.message);
     if (!res.headersSent) {
-      res.status(500).json({ error: "Failed to proxy video" });
+      res.status(500).json({ error: "Failed to proxy video", details: err.message });
     }
   }
 });
