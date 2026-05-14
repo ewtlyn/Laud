@@ -604,7 +604,16 @@ input {
   margin-top: 14px;
 }
 
+/* показываем мобильный чат только на мобиле, десктопный — только на десктопе */
+.mobile-chat-only {
+  display: none;
+}
+
 @media (max-width: 980px) {
+  .mobile-chat-only {
+    display: block;
+  }
+
   .room-grid {
     grid-template-columns: 1fr;
   }
@@ -621,6 +630,50 @@ input {
 
   .player-placeholder {
     min-height: 220px;
+  }
+}
+
+@media (max-width: 980px) {
+  /* Фиксируем страницу по высоте — клавиатура не двигает видео */
+  .room-shell {
+    height: 100dvh;
+    display: flex;
+    flex-direction: column;
+    overflow: hidden;
+  }
+
+  .room-topbar {
+    flex-shrink: 0;
+  }
+
+  .room-grid {
+    flex: 1;
+    min-height: 0;
+    overflow-y: auto;
+    overflow-x: hidden;
+  }
+
+  .main-column {
+    display: flex;
+    flex-direction: column;
+  }
+
+  /* Чат на мобиле — сообщения растягиваются, инпут прилипает снизу */
+  .mobile-chat-only .chat-card {
+    display: flex;
+    flex-direction: column;
+  }
+
+  .mobile-chat-only .modern-chat-box {
+    height: 200px;
+  }
+
+  .mobile-chat-only .chat-input-row {
+    position: sticky;
+    bottom: 0;
+    background: #0d0d0d;
+    padding-top: 8px;
+    padding-bottom: env(safe-area-inset-bottom, 0px);
   }
 }
 

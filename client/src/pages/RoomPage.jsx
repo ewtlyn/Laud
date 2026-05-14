@@ -538,29 +538,6 @@ function RoomPage() {
     }
 
     if (videoType === "youtube") {
-      if (useYoutubeProxy) {
-        const videoId = extractYoutubeId(videoUrl);
-        if (!videoId) {
-          return <div className="player-error">Не удалось распознать YouTube-ссылку</div>;
-        }
-        return (
-          <div className="player-wrap">
-            <video
-              ref={htmlVideoRef}
-              src={`${SERVER_URL}/api/youtube-stream/${videoId}`}
-              controls
-              onPlay={handleFilePlay}
-              onPause={handleFilePause}
-              onSeeked={handleFileSeeked}
-              onTimeUpdate={handleFileTimeUpdate}
-              onWaiting={() => { if (!isHost) requestFreshRoomState(); }}
-              onStalled={() => { if (!isHost) requestFreshRoomState(); }}
-              className="player-video"
-            />
-          </div>
-        );
-      }
-
       return (
         <YouTubeSyncPlayer
           videoUrl={videoUrl}
@@ -815,29 +792,19 @@ function RoomPage() {
 
             <div className="micro-hint">
               Только хост может менять видео. Остальные участники автоматически синхронизируются.
-              {" "}
-              <label style={{ cursor: "pointer", userSelect: "none" }}>
-                <input
-                  type="checkbox"
-                  checked={useYoutubeProxy}
-                  onChange={(e) => {
-                    setUseYoutubeProxy(e.target.checked);
-                    localStorage.setItem("laud_yt_proxy", e.target.checked ? "1" : "0");
-                  }}
-                  style={{ marginRight: 4 }}
-                />
-                YouTube через прокси (для РФ)
-              </label>
             </div>
 
             <div className="player-stage">{renderPlayer()}</div>
           </section>
 
-          {renderChat()}
+          <div className="mobile-chat-only">
+            {renderChat()}
+          </div>
         </main>
 
         <aside className="side-column">
           {renderParticipants(false)}
+          {renderChat()}
         </aside>
       </div>
     </div>
