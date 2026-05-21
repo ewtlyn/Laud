@@ -107,6 +107,7 @@ function RoomPage() {
   const [pendingSuggestions, setPendingSuggestions] = useState([]);
   const [suggestUrl, setSuggestUrl] = useState("");
   const [suggestionSent, setSuggestionSent] = useState(false);
+  const [mobileMenuOpen, setMobileMenuOpen] = useState(false);
 
   useEffect(() => {
     videoUrlRef.current = videoUrl;
@@ -236,12 +237,14 @@ function RoomPage() {
     }
 
     const joinRoom = () => {
+      const avatar = localStorage.getItem("laud_avatar") || "";
       socket.emit(
         "join_room",
         {
           roomId,
           username,
-          clientId: clientIdRef.current
+          clientId: clientIdRef.current,
+          avatar
         },
         () => {}
       );
@@ -878,9 +881,18 @@ function RoomPage() {
         {users.map((user) => (
           <div key={user.clientId || user.id} className="user-item">
             <div className="user-main">
-              <div className="user-avatar">
-                {(user.username || "?").slice(0, 1).toUpperCase()}
-              </div>
+              {user.avatar ? (
+                <img
+                  src={user.avatar}
+                  className="user-avatar user-avatar-img"
+                  alt=""
+                  draggable={false}
+                />
+              ) : (
+                <div className="user-avatar">
+                  {(user.username || "?").slice(0, 1).toUpperCase()}
+                </div>
+              )}
 
               <div className="user-meta">
                 <span className="user-name">{user.username}</span>
@@ -910,18 +922,7 @@ function RoomPage() {
 
       <div className="room-topbar">
         <div className="room-topbar-left">
-          <div className="brand-row">
-            <h1 className="room-brand">LAUD</h1>
-
-            <button
-              className="icon-button mobile-drawer-toggle"
-              onClick={() => setSidebarOpen(true)}
-              type="button"
-              aria-label="Открыть участников"
-            >
-              ☰
-            </button>
-          </div>
+          <h1 className="room-brand">LAUD</h1>
 
           <div className="room-meta">
             <span className="room-meta-item">Комната: {roomId}</span>
@@ -942,21 +943,62 @@ function RoomPage() {
         </div>
 
         <div className="room-topbar-actions">
+          {/* десктоп */}
           {isHost && (
             <button
-              className="ghost-button settings-button"
+              className="ghost-button settings-button desktop-only"
               onClick={() => setSettingsOpen(true)}
               type="button"
-              aria-label="Настройки"
             >
-              <span className="btn-icon">⚙</span>
-              <span className="btn-label">Настройки</span>
+              Настройки
             </button>
           )}
-          <button className="ghost-button leave-button" onClick={handleLeave} aria-label="Выйти">
-            <span className="btn-icon">←</span>
-            <span className="btn-label">Выйти</span>
+          <button className="ghost-button leave-button desktop-only" onClick={handleLeave}>
+            Выйти
           </button>
+
+          {/* мобильный бургер */}
+          <div className="mobile-menu-wrap">
+            <button
+              className="mobile-burger-btn"
+              onClick={() => setMobileMenuOpen((v) => !v)}
+              aria-label="Меню"
+              type="button"
+            >
+              ☰
+            </button>
+
+            {mobileMenuOpen && (
+              <>
+                <div
+                  className="mobile-menu-backdrop"
+                  onClick={() => setMobileMenuOpen(false)}
+                />
+                <div className="mobile-menu-dropdown">
+                  <button
+                    className="mobile-menu-item"
+                    onClick={() => { setSidebarOpen(true); setMobileMenuOpen(false); }}
+                  >
+                    Участники
+                  </button>
+                  {isHost && (
+                    <button
+                      className="mobile-menu-item"
+                      onClick={() => { setSettingsOpen(true); setMobileMenuOpen(false); }}
+                    >
+                      Настройки
+                    </button>
+                  )}
+                  <button
+                    className="mobile-menu-item mobile-menu-leave"
+                    onClick={handleLeave}
+                  >
+                    Выйти
+                  </button>
+                </div>
+              </>
+            )}
+          </div>
         </div>
       </div>
 
