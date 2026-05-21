@@ -47,25 +47,6 @@ function detectVideoType(url) {
   return "file";
 }
 
-function extractYoutubeId(url) {
-  try {
-    const parsed = new URL(url);
-    if (parsed.hostname.includes("youtu.be")) {
-      return parsed.pathname.split("/").filter(Boolean)[0] || null;
-    }
-    if (parsed.hostname.includes("youtube.com")) {
-      if (parsed.pathname === "/watch") return parsed.searchParams.get("v");
-      if (parsed.pathname.startsWith("/embed/"))
-        return parsed.pathname.split("/embed/")[1]?.split(/[?/&]/)[0] || null;
-      if (parsed.pathname.startsWith("/shorts/"))
-        return parsed.pathname.split("/shorts/")[1]?.split(/[?/&]/)[0] || null;
-    }
-    return null;
-  } catch {
-    return null;
-  }
-}
-
 function getOrCreateClientId() {
   const existing = localStorage.getItem("laud_client_id");
   if (existing) return existing;
@@ -117,6 +98,15 @@ function RoomPage() {
   const [useYoutubeProxy, setUseYoutubeProxy] = useState(
     () => localStorage.getItem("laud_yt_proxy") === "1"
   );
+
+  const [roomSettings, setRoomSettings] = useState({
+    allowParticipantControls: true,
+    allowVideoSuggestions: true
+  });
+  const [settingsOpen, setSettingsOpen] = useState(false);
+  const [pendingSuggestions, setPendingSuggestions] = useState([]);
+  const [suggestUrl, setSuggestUrl] = useState("");
+  const [suggestionSent, setSuggestionSent] = useState(false);
 
   useEffect(() => {
     videoUrlRef.current = videoUrl;
@@ -233,6 +223,8 @@ function RoomPage() {
       if (response.users) setUsers(response.users);
       if (response.hostClientId) setHostClientId(response.hostClientId);
       if (response.messages) setMessages(response.messages);
+      if (response.settings) setRoomSettings(response.settings);
+      if (response.suggestions) setPendingSuggestions(response.suggestions);
       if (response.videoState) applyRemoteVideoState(response.videoState);
     });
   };
@@ -269,10 +261,12 @@ function RoomPage() {
       setIsConnected(false);
     };
 
-    const onRoomSnapshot = ({ users, hostClientId, videoState, messages }) => {
+    const onRoomSnapshot = ({ users, hostClientId, videoState, messages, settings, suggestions }) => {
       setUsers(users || []);
       setHostClientId(hostClientId || "");
       setMessages(messages || []);
+      if (settings) setRoomSettings(settings);
+      if (suggestions) setPendingSuggestions(suggestions);
 
       if (videoState) {
         applyRemoteVideoState(videoState);
@@ -289,6 +283,21 @@ function RoomPage() {
 
     const onVideoState = (state) => {
       applyRemoteVideoState(state);
+    };
+
+    const onRoomSettings = (settings) => {
+      setRoomSettings(settings || { allowParticipantControls: true, allowVideoSuggestions: true });
+      if (!settings?.allowVideoSuggestions) {
+        setPendingSuggestions([]);
+      }
+    };
+
+    const onNewSuggestion = (suggestion) => {
+      setPendingSuggestions((prev) => [...prev, suggestion]);
+    };
+
+    const onSuggestionResponse = () => {
+      setSuggestionSent(false);
     };
 
     const onPlayVideo = ({ currentTime, lastActionAt, emittedAt }) => {
@@ -331,7 +340,6 @@ function RoomPage() {
 
       const now = Date.now();
 
-      // Не применяем входящий sync слишком часто
       if (now - lastRemoteSyncRef.current < 1200) return;
       lastRemoteSyncRef.current = now;
 
@@ -392,6 +400,9 @@ function RoomPage() {
     socket.on("room_users", onRoomUsers);
     socket.on("host_data", onHostData);
     socket.on("video_state", onVideoState);
+    socket.on("room_settings", onRoomSettings);
+    socket.on("new_suggestion", onNewSuggestion);
+    socket.on("suggestion_response", onSuggestionResponse);
     socket.on("play_video", onPlayVideo);
     socket.on("pause_video", onPauseVideo);
     socket.on("seek_video", onSeekVideo);
@@ -409,6 +420,9 @@ function RoomPage() {
       socket.off("room_users", onRoomUsers);
       socket.off("host_data", onHostData);
       socket.off("video_state", onVideoState);
+      socket.off("room_settings", onRoomSettings);
+      socket.off("new_suggestion", onNewSuggestion);
+      socket.off("suggestion_response", onSuggestionResponse);
       socket.off("play_video", onPlayVideo);
       socket.off("pause_video", onPauseVideo);
       socket.off("seek_video", onSeekVideo);
@@ -448,6 +462,44 @@ function RoomPage() {
       roomId,
       videoUrl: cleanUrl,
       videoType: type
+    });
+  };
+
+  const handleUpdateSettings = (patch) => {
+    const next = { ...roomSettings, ...patch };
+    setRoomSettings(next);
+    socket.emit("update_room_settings", { roomId, settings: next });
+  };
+
+  const handleTransferHost = (targetClientId) => {
+    socket.emit("transfer_host", { roomId, targetClientId }, (res) => {
+      if (res?.ok) {
+        setSettingsOpen(false);
+      }
+    });
+  };
+
+  const handleSuggestVideo = () => {
+    if (!suggestUrl.trim()) return;
+    const cleanUrl = normalizeVkUrl(suggestUrl.trim());
+    socket.emit("suggest_video", { roomId, videoUrl: cleanUrl }, (res) => {
+      if (res?.ok) {
+        setSuggestionSent(true);
+        setSuggestUrl("");
+      }
+    });
+  };
+
+  const handleRespondSuggestion = (suggestionId, approved) => {
+    socket.emit("respond_suggestion", { roomId, suggestionId, approved }, (res) => {
+      if (res?.ok) {
+        setPendingSuggestions((prev) => prev.filter((s) => s.id !== suggestionId));
+        if (approved) {
+          setYoutubeSeekTime(0);
+          youtubeSeekRef.current = 0;
+          lastRemoteSyncRef.current = 0;
+        }
+      }
     });
   };
 
@@ -553,22 +605,33 @@ function RoomPage() {
   };
 
   const renderPlayer = () => {
+    const canControl = isHost || roomSettings.allowParticipantControls;
+
+    const controlsOverlay = !canControl ? (
+      <div className="player-controls-overlay">
+        <span className="player-controls-overlay-hint">Управление заблокировано</span>
+      </div>
+    ) : null;
+
     if (!videoUrl) {
       return <div className="player-placeholder">Видео пока не выбрано</div>;
     }
 
     if (videoType === "youtube") {
       return (
-        <YouTubeSyncPlayer
-          videoUrl={videoUrl}
-          playing={playing}
-          seekToSeconds={youtubeSeekTime}
-          isHost={isHost}
-          onPlay={handleYoutubePlay}
-          onPause={handleYoutubePause}
-          onProgress={handleYoutubeProgress}
-          onError={(text) => setPlayerError(text)}
-        />
+        <div className="player-youtube-wrap">
+          <YouTubeSyncPlayer
+            videoUrl={videoUrl}
+            playing={playing}
+            seekToSeconds={youtubeSeekTime}
+            isHost={isHost}
+            onPlay={handleYoutubePlay}
+            onPause={handleYoutubePause}
+            onProgress={handleYoutubeProgress}
+            onError={(text) => setPlayerError(text)}
+          />
+          {controlsOverlay}
+        </div>
       );
     }
 
@@ -583,6 +646,7 @@ function RoomPage() {
             allowFullScreen
             frameBorder="0"
           />
+          {controlsOverlay}
           {playerError && <div className="player-error-inline">{playerError}</div>}
         </div>
       );
@@ -614,7 +678,102 @@ function RoomPage() {
           onStalled={() => { if (!isHost) requestFreshRoomState(); }}
           className="player-video"
         />
+        {controlsOverlay}
       </div>
+    );
+  };
+
+  const renderSettings = () => {
+    if (!settingsOpen) return null;
+
+    const otherUsers = users.filter((u) => u.clientId !== clientIdRef.current);
+
+    return (
+      <>
+        <div className="settings-backdrop" onClick={() => setSettingsOpen(false)} />
+        <div className="settings-modal">
+          <div className="settings-modal-header">
+            <h2 className="settings-modal-title">Настройки комнаты</h2>
+            <button
+              className="icon-button"
+              onClick={() => setSettingsOpen(false)}
+              type="button"
+            >
+              ✕
+            </button>
+          </div>
+
+          <div className="settings-section">
+            <div className="settings-section-label">Передать права хоста</div>
+            {otherUsers.length === 0 ? (
+              <p className="settings-empty-hint">Нет других участников в комнате</p>
+            ) : (
+              <div className="settings-users-list">
+                {otherUsers.map((u) => (
+                  <div key={u.clientId} className="settings-user-row">
+                    <div className="user-avatar settings-user-avatar">
+                      {(u.username || "?").slice(0, 1).toUpperCase()}
+                    </div>
+                    <span className="settings-user-name">{u.username}</span>
+                    <button
+                      className="secondary-button settings-transfer-btn"
+                      onClick={() => handleTransferHost(u.clientId)}
+                    >
+                      Передать
+                    </button>
+                  </div>
+                ))}
+              </div>
+            )}
+          </div>
+
+          <div className="settings-divider" />
+
+          <div className="settings-section">
+            <label className="settings-toggle-row">
+              <div className="settings-toggle-text">
+                <span className="settings-toggle-label">Управление участниками</span>
+                <span className="settings-toggle-desc">
+                  Разрешить участникам ставить паузу и перематывать
+                </span>
+              </div>
+              <div
+                className={`toggle-track ${roomSettings.allowParticipantControls ? "toggle-on" : ""}`}
+                onClick={() => handleUpdateSettings({ allowParticipantControls: !roomSettings.allowParticipantControls })}
+                role="switch"
+                aria-checked={roomSettings.allowParticipantControls}
+                tabIndex={0}
+                onKeyDown={(e) => { if (e.key === " " || e.key === "Enter") handleUpdateSettings({ allowParticipantControls: !roomSettings.allowParticipantControls }); }}
+              >
+                <div className="toggle-thumb" />
+              </div>
+            </label>
+          </div>
+
+          <div className="settings-divider" />
+
+          <div className="settings-section">
+            <label className="settings-toggle-row">
+              <div className="settings-toggle-text">
+                <span className="settings-toggle-label">Предложения видео</span>
+                <span className="settings-toggle-desc">
+                  Участники могут предлагать видео на одобрение хоста
+                </span>
+              </div>
+              <div
+                className={`toggle-track ${roomSettings.allowVideoSuggestions ? "toggle-on" : ""}`}
+                onClick={() => handleUpdateSettings({ allowVideoSuggestions: !roomSettings.allowVideoSuggestions })}
+                role="switch"
+                aria-checked={roomSettings.allowVideoSuggestions}
+                tabIndex={0}
+                onKeyDown={(e) => { if (e.key === " " || e.key === "Enter") handleUpdateSettings({ allowVideoSuggestions: !roomSettings.allowVideoSuggestions }); }}
+              >
+                <div className="toggle-thumb" />
+              </div>
+            </label>
+          </div>
+        </div>
+      </>
     );
   };
 
@@ -740,6 +899,8 @@ function RoomPage() {
 
   return (
     <div className="room-page room-shell">
+      {renderSettings()}
+
       {sidebarOpen && (
         <>
           <div className="mobile-backdrop" onClick={() => setSidebarOpen(false)} />
@@ -781,6 +942,15 @@ function RoomPage() {
         </div>
 
         <div className="room-topbar-actions">
+          {isHost && (
+            <button
+              className="ghost-button settings-button"
+              onClick={() => setSettingsOpen(true)}
+              type="button"
+            >
+              Настройки
+            </button>
+          )}
           <button className="ghost-button leave-button" onClick={handleLeave}>
             Выйти
           </button>
@@ -793,6 +963,36 @@ function RoomPage() {
             <div className="section-header">
               <h2 className="section-title">Плеер</h2>
             </div>
+
+            {isHost && pendingSuggestions.length > 0 && (
+              <div className="suggestions-panel">
+                <div className="suggestions-panel-title">
+                  Предложения видео ({pendingSuggestions.length})
+                </div>
+                {pendingSuggestions.map((sug) => (
+                  <div key={sug.id} className="suggestion-item">
+                    <div className="suggestion-info">
+                      <span className="suggestion-from">{sug.username}</span>
+                      <span className="suggestion-url">{sug.videoUrl}</span>
+                    </div>
+                    <div className="suggestion-actions">
+                      <button
+                        className="primary-button suggestion-btn"
+                        onClick={() => handleRespondSuggestion(sug.id, true)}
+                      >
+                        Принять
+                      </button>
+                      <button
+                        className="secondary-button suggestion-btn"
+                        onClick={() => handleRespondSuggestion(sug.id, false)}
+                      >
+                        Отклонить
+                      </button>
+                    </div>
+                  </div>
+                ))}
+              </div>
+            )}
 
             {isHost && (
               <div className="video-toolbar">
@@ -829,6 +1029,30 @@ function RoomPage() {
                 YouTube через прокси (для РФ)
               </label>
             </div>
+
+            {!isHost && roomSettings.allowVideoSuggestions && (
+              <div className="suggest-row">
+                {suggestionSent ? (
+                  <div className="suggest-sent">
+                    Предложение отправлено — ожидайте одобрения хоста
+                  </div>
+                ) : (
+                  <>
+                    <input
+                      className="app-input compact-input"
+                      type="text"
+                      placeholder="Предложить видео хосту"
+                      value={suggestUrl}
+                      onChange={(e) => setSuggestUrl(e.target.value)}
+                      onKeyDown={(e) => { if (e.key === "Enter") handleSuggestVideo(); }}
+                    />
+                    <button className="secondary-button" onClick={handleSuggestVideo}>
+                      Предложить
+                    </button>
+                  </>
+                )}
+              </div>
+            )}
 
             <div className="player-stage">{renderPlayer()}</div>
           </section>

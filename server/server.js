@@ -105,12 +105,23 @@ function createSystemMessage(text) {
   };
 }
 
+function detectVideoType(url) {
+  if (!url) return "file";
+  const lower = url.toLowerCase();
+  if (lower.includes("youtube.com") || lower.includes("youtu.be")) return "youtube";
+  if (
+    lower.includes("vk.com/video_ext.php") ||
+    lower.includes("vkvideo.ru/video_ext.php") ||
+    lower.includes("vk.com/video") ||
+    lower.includes("vkvideo.ru/video")
+  ) return "vk";
+  return "file";
+}
+
 function getRoomSnapshot(roomId) {
   const room = rooms[roomId];
   if (!room) {
-    return {
-      ok: false
-    };
+    return { ok: false };
   }
 
   return {
@@ -118,7 +129,9 @@ function getRoomSnapshot(roomId) {
     users: room.users,
     hostClientId: room.hostClientId,
     videoState: room.videoState,
-    messages: room.messages
+    messages: room.messages,
+    settings: room.settings,
+    suggestions: room.suggestions
   };
 }
 
@@ -131,6 +144,7 @@ function removeUserFromRoom(socket) {
   const leftClientId = socket.clientId;
 
   room.users = room.users.filter((user) => user.clientId !== leftClientId);
+  room.suggestions = room.suggestions.filter((s) => s.clientId !== leftClientId);
 
   const onlineUsers = room.users;
 
@@ -187,7 +201,12 @@ io.on("connection", (socket) => {
           videoUrl: "",
           videoType: "file",
           lastActionAt: Date.now()
-        }
+        },
+        settings: {
+          allowParticipantControls: true,
+          allowVideoSuggestions: true
+        },
+        suggestions: []
       };
     }
 
@@ -226,7 +245,9 @@ io.on("connection", (socket) => {
       users: room.users,
       hostClientId: room.hostClientId,
       videoState: room.videoState,
-      messages: room.messages
+      messages: room.messages,
+      settings: room.settings,
+      suggestions: room.suggestions
     });
 
     const joinMessage = createSystemMessage(
@@ -246,6 +267,131 @@ io.on("connection", (socket) => {
 
   socket.on("leave_room", () => {
     removeUserFromRoom(socket);
+  });
+
+  socket.on("update_room_settings", ({ roomId, settings }, callback) => {
+    if (!rooms[roomId] || rooms[roomId].hostClientId !== socket.clientId) {
+      callback?.({ ok: false });
+      return;
+    }
+
+    const s = rooms[roomId].settings;
+
+    if (typeof settings?.allowParticipantControls === "boolean") {
+      s.allowParticipantControls = settings.allowParticipantControls;
+    }
+
+    if (typeof settings?.allowVideoSuggestions === "boolean") {
+      s.allowVideoSuggestions = settings.allowVideoSuggestions;
+      if (!settings.allowVideoSuggestions) {
+        rooms[roomId].suggestions = [];
+      }
+    }
+
+    io.to(roomId).emit("room_settings", s);
+    callback?.({ ok: true });
+  });
+
+  socket.on("transfer_host", ({ roomId, targetClientId }, callback) => {
+    if (!rooms[roomId] || rooms[roomId].hostClientId !== socket.clientId) {
+      callback?.({ ok: false });
+      return;
+    }
+
+    const target = rooms[roomId].users.find((u) => u.clientId === targetClientId);
+    if (!target) {
+      callback?.({ ok: false });
+      return;
+    }
+
+    rooms[roomId].hostClientId = targetClientId;
+    io.to(roomId).emit("host_data", { hostClientId: targetClientId });
+
+    const msg = createSystemMessage(
+      `${socket.username} передал права хоста пользователю ${target.username}`
+    );
+    rooms[roomId].messages.push(msg);
+    io.to(roomId).emit("receive_message", msg);
+
+    callback?.({ ok: true });
+  });
+
+  socket.on("suggest_video", ({ roomId, videoUrl }, callback) => {
+    if (!rooms[roomId]) {
+      callback?.({ ok: false });
+      return;
+    }
+
+    if (!rooms[roomId].settings.allowVideoSuggestions) {
+      callback?.({ ok: false, error: "SUGGESTIONS_DISABLED" });
+      return;
+    }
+
+    const cleanUrl = (videoUrl || "").trim();
+    if (!cleanUrl) {
+      callback?.({ ok: false, error: "EMPTY_URL" });
+      return;
+    }
+
+    const suggestion = {
+      id: createId("sug"),
+      clientId: socket.clientId,
+      username: socket.username || "Гость",
+      videoUrl: cleanUrl,
+      videoType: detectVideoType(cleanUrl)
+    };
+
+    rooms[roomId].suggestions.push(suggestion);
+
+    const hostSocket = [...io.sockets.sockets.values()].find(
+      (s) => s.roomId === roomId && s.clientId === rooms[roomId].hostClientId
+    );
+    hostSocket?.emit("new_suggestion", suggestion);
+
+    callback?.({ ok: true });
+  });
+
+  socket.on("respond_suggestion", ({ roomId, suggestionId, approved }, callback) => {
+    if (!rooms[roomId] || rooms[roomId].hostClientId !== socket.clientId) {
+      callback?.({ ok: false });
+      return;
+    }
+
+    const idx = rooms[roomId].suggestions.findIndex((s) => s.id === suggestionId);
+    if (idx === -1) {
+      callback?.({ ok: false });
+      return;
+    }
+
+    const sug = rooms[roomId].suggestions.splice(idx, 1)[0];
+
+    if (approved) {
+      rooms[roomId].videoState.videoUrl = sug.videoUrl;
+      rooms[roomId].videoState.videoType = sug.videoType;
+      rooms[roomId].videoState.currentTime = 0;
+      rooms[roomId].videoState.isPlaying = false;
+      rooms[roomId].videoState.lastActionAt = Date.now();
+      io.to(roomId).emit("video_state", rooms[roomId].videoState);
+
+      const msg = createSystemMessage(
+        `${socket.username} принял видео от ${sug.username}`
+      );
+      rooms[roomId].messages.push(msg);
+      io.to(roomId).emit("receive_message", msg);
+    } else {
+      const msg = createSystemMessage(
+        `${socket.username} отклонил предложение от ${sug.username}`
+      );
+      rooms[roomId].messages.push(msg);
+      io.to(roomId).emit("receive_message", msg);
+    }
+
+    const sugSocket = [...io.sockets.sockets.values()].find(
+      (s) => s.roomId === roomId && s.clientId === sug.clientId
+    );
+    sugSocket?.emit("suggestion_response", { id: suggestionId, approved: Boolean(approved) });
+
+    callback?.({ ok: true });
   });
 
   socket.on("set_video", ({ roomId, videoUrl, videoType }, callback) => {
@@ -283,6 +429,12 @@ io.on("connection", (socket) => {
       return;
     }
 
+    const isRoomHost = rooms[roomId].hostClientId === socket.clientId;
+    if (!isRoomHost && !rooms[roomId].settings.allowParticipantControls) {
+      callback?.({ ok: false, error: "CONTROLS_DISABLED" });
+      return;
+    }
+
     rooms[roomId].videoState.isPlaying = true;
     rooms[roomId].videoState.currentTime = currentTime || 0;
     rooms[roomId].videoState.lastActionAt = Date.now();
@@ -301,6 +453,12 @@ io.on("connection", (socket) => {
       return;
     }
 
+    const isRoomHost = rooms[roomId].hostClientId === socket.clientId;
+    if (!isRoomHost && !rooms[roomId].settings.allowParticipantControls) {
+      callback?.({ ok: false, error: "CONTROLS_DISABLED" });
+      return;
+    }
+
     rooms[roomId].videoState.isPlaying = false;
     rooms[roomId].videoState.currentTime = currentTime || 0;
     rooms[roomId].videoState.lastActionAt = Date.now();
@@ -316,6 +474,12 @@ io.on("connection", (socket) => {
   socket.on("seek_video", ({ roomId, currentTime }, callback) => {
     if (!rooms[roomId]) {
       callback?.({ ok: false });
+      return;
+    }
+
+    const isRoomHost = rooms[roomId].hostClientId === socket.clientId;
+    if (!isRoomHost && !rooms[roomId].settings.allowParticipantControls) {
+      callback?.({ ok: false, error: "CONTROLS_DISABLED" });
       return;
     }
 

@@ -760,7 +760,8 @@ input {
     width: 100%;
   }
 
-  .video-toolbar {
+  .video-toolbar,
+  .suggest-row {
     grid-template-columns: 1fr auto;
     gap: 8px;
   }
@@ -821,7 +822,304 @@ input {
     border-radius: 14px;
   }
 
-  .participants-drawer.mobile-open {
+  /* ── Settings modal ── */
+
+.settings-backdrop {
+  position: fixed;
+  inset: 0;
+  background: rgba(0, 0, 0, 0.7);
+  z-index: 200;
+}
+
+.settings-modal {
+  position: fixed;
+  top: 50%;
+  left: 50%;
+  transform: translate(-50%, -50%);
+  z-index: 201;
+  width: min(480px, calc(100vw - 32px));
+  max-height: calc(100dvh - 48px);
+  overflow-y: auto;
+  background: #0d0d0d;
+  border: 1px solid #1f1f1f;
+  border-radius: 24px;
+  padding: 20px;
+  box-shadow: 0 20px 60px rgba(0, 0, 0, 0.7);
+}
+
+.settings-modal-header {
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  gap: 12px;
+  margin-bottom: 20px;
+}
+
+.settings-modal-title {
+  margin: 0;
+  font-size: 20px;
+  font-weight: 800;
+}
+
+.settings-section {
+  padding: 4px 0 12px;
+}
+
+.settings-section-label {
+  font-size: 13px;
+  font-weight: 700;
+  color: #888;
+  text-transform: uppercase;
+  letter-spacing: 0.06em;
+  margin-bottom: 10px;
+}
+
+.settings-empty-hint {
+  margin: 0;
+  color: #666;
+  font-size: 14px;
+}
+
+.settings-users-list {
+  display: flex;
+  flex-direction: column;
+  gap: 8px;
+}
+
+.settings-user-row {
+  display: flex;
+  align-items: center;
+  gap: 10px;
+  padding: 10px 12px;
+  background: #141414;
+  border: 1px solid #202020;
+  border-radius: 14px;
+}
+
+.settings-user-avatar {
+  width: 30px;
+  height: 30px;
+  font-size: 13px;
+  flex-shrink: 0;
+}
+
+.settings-user-name {
+  flex: 1;
+  min-width: 0;
+  word-break: break-word;
+}
+
+.settings-transfer-btn {
+  padding: 8px 14px;
+  font-size: 13px;
+  flex-shrink: 0;
+}
+
+.settings-divider {
+  height: 1px;
+  background: #1a1a1a;
+  margin: 4px 0 16px;
+}
+
+.settings-toggle-row {
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  gap: 16px;
+  cursor: default;
+}
+
+.settings-toggle-text {
+  display: flex;
+  flex-direction: column;
+  gap: 3px;
+}
+
+.settings-toggle-label {
+  font-size: 15px;
+  font-weight: 700;
+}
+
+.settings-toggle-desc {
+  font-size: 13px;
+  color: #777;
+  line-height: 1.4;
+}
+
+/* Toggle switch */
+.toggle-track {
+  width: 46px;
+  height: 26px;
+  border-radius: 13px;
+  background: #2a2a2a;
+  position: relative;
+  flex-shrink: 0;
+  cursor: pointer;
+  transition: background 0.2s;
+  border: 1px solid #333;
+  outline: none;
+}
+
+.toggle-track:focus-visible {
+  outline: 2px solid #fff;
+  outline-offset: 2px;
+}
+
+.toggle-track.toggle-on {
+  background: #fff;
+  border-color: #fff;
+}
+
+.toggle-thumb {
+  position: absolute;
+  top: 3px;
+  left: 3px;
+  width: 18px;
+  height: 18px;
+  border-radius: 50%;
+  background: #666;
+  transition: left 0.2s, background 0.2s;
+}
+
+.toggle-track.toggle-on .toggle-thumb {
+  left: 23px;
+  background: #000;
+}
+
+.settings-button {
+  white-space: nowrap;
+}
+
+/* ── Suggestions panel (host) ── */
+
+.suggestions-panel {
+  margin-bottom: 12px;
+  padding: 12px 14px;
+  background: #0f0f0f;
+  border: 1px solid #252525;
+  border-radius: 16px;
+}
+
+.suggestions-panel-title {
+  font-size: 13px;
+  font-weight: 700;
+  color: #888;
+  text-transform: uppercase;
+  letter-spacing: 0.05em;
+  margin-bottom: 10px;
+}
+
+.suggestion-item {
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  gap: 12px;
+  padding: 10px 0;
+  border-top: 1px solid #1c1c1c;
+}
+
+.suggestion-item:first-of-type {
+  border-top: none;
+  padding-top: 0;
+}
+
+.suggestion-info {
+  display: flex;
+  flex-direction: column;
+  gap: 3px;
+  min-width: 0;
+  flex: 1;
+}
+
+.suggestion-from {
+  font-size: 13px;
+  font-weight: 700;
+}
+
+.suggestion-url {
+  font-size: 12px;
+  color: #777;
+  overflow: hidden;
+  text-overflow: ellipsis;
+  white-space: nowrap;
+}
+
+.suggestion-actions {
+  display: flex;
+  gap: 8px;
+  flex-shrink: 0;
+}
+
+.suggestion-btn {
+  padding: 8px 12px;
+  font-size: 13px;
+}
+
+/* ── Suggest row (non-host) ── */
+
+.suggest-row {
+  display: grid;
+  grid-template-columns: minmax(0, 1fr) auto;
+  gap: 10px;
+  margin-bottom: 10px;
+}
+
+.suggest-sent {
+  margin-bottom: 10px;
+  padding: 10px 14px;
+  background: #0f0f0f;
+  border: 1px solid #252525;
+  border-radius: 14px;
+  font-size: 13px;
+  color: #8a8a8a;
+  line-height: 1.4;
+}
+
+/* ── Player controls overlay ── */
+
+.player-youtube-wrap {
+  position: relative;
+  width: 100%;
+}
+
+.player-wrap {
+  position: relative;
+}
+
+.vk-player-wrap {
+  position: relative;
+}
+
+.player-controls-overlay {
+  position: absolute;
+  inset: 0;
+  z-index: 10;
+  cursor: not-allowed;
+  background: transparent;
+  display: flex;
+  align-items: flex-end;
+  justify-content: center;
+  padding-bottom: 10px;
+}
+
+.player-controls-overlay-hint {
+  background: rgba(0, 0, 0, 0.65);
+  color: #aaa;
+  font-size: 12px;
+  padding: 5px 12px;
+  border-radius: 8px;
+  pointer-events: none;
+  opacity: 0;
+  transition: opacity 0.2s;
+}
+
+.player-controls-overlay:hover .player-controls-overlay-hint {
+  opacity: 1;
+}
+
+/* ── End new styles ── */
+
+.participants-drawer.mobile-open {
     display: block;
     position: fixed;
     top: 0;
