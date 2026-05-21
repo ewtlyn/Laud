@@ -947,12 +947,15 @@ function RoomPage() {
               className="ghost-button settings-button"
               onClick={() => setSettingsOpen(true)}
               type="button"
+              aria-label="Настройки"
             >
-              Настройки
+              <span className="btn-icon">⚙</span>
+              <span className="btn-label">Настройки</span>
             </button>
           )}
-          <button className="ghost-button leave-button" onClick={handleLeave}>
-            Выйти
+          <button className="ghost-button leave-button" onClick={handleLeave} aria-label="Выйти">
+            <span className="btn-icon">←</span>
+            <span className="btn-label">Выйти</span>
           </button>
         </div>
       </div>

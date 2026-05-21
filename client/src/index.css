@@ -771,6 +771,14 @@ input {
   white-space: nowrap;
 }
 
+.btn-icon {
+  display: none;
+}
+
+.btn-label {
+  display: inline;
+}
+
 /* ── Suggestions panel (host) ── */
 
 .suggestions-panel {
@@ -1040,11 +1048,24 @@ input {
     width: auto;
   }
 
-  .leave-button {
-    width: auto !important;
+  .leave-button,
+  .settings-button {
+    width: 40px;
+    height: 40px;
     min-width: 0;
-    padding: 8px 12px;
-    font-size: 13px;
+    padding: 0;
+    font-size: 18px;
+    display: inline-flex;
+    align-items: center;
+    justify-content: center;
+  }
+
+  .btn-icon {
+    display: inline;
+  }
+
+  .btn-label {
+    display: none;
   }
 
   /* Кнопки на хоум-странице — полная ширина, в комнате — нет */
