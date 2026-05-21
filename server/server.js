@@ -179,7 +179,8 @@ function removeUserFromRoom(socket) {
 io.on("connection", (socket) => {
   console.log("Пользователь подключился:", socket.id);
 
-  socket.on("join_room", ({ roomId, username, clientId, avatar }, callback) => {
+  socket.on("join_room", ({ roomId, username, clientId, avatar: avatarRaw }, callback) => {
+    const avatar = avatarRaw;
     if (!roomId) {
       callback?.({ ok: false, error: "NO_ROOM_ID" });
       return;
@@ -238,6 +239,7 @@ io.on("connection", (socket) => {
     socket.roomId = roomId;
     socket.username = safeUsername;
     socket.clientId = safeClientId;
+    socket.avatar = safeAvatar;
 
     io.to(roomId).emit("room_users", room.users);
     io.to(roomId).emit("host_data", {
@@ -541,6 +543,7 @@ io.on("connection", (socket) => {
       const payload = {
         id: clientMessageId || createId("msg"),
         username: (username || "Гость").trim() || "Гость",
+        avatar: socket.avatar || "",
         type: safeType,
         message: safeType === "text" ? safeMessage : "",
         gifUrl: safeType === "gif" ? safeGifUrl : "",

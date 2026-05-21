@@ -780,6 +780,17 @@ function RoomPage() {
     );
   };
 
+  const renderMsgAvatar = (msg) => {
+    if (msg.avatar) {
+      return <img src={msg.avatar} className="msg-avatar msg-avatar-img" alt="" draggable={false} />;
+    }
+    return (
+      <div className="msg-avatar msg-avatar-letter">
+        {(msg.username || "?")[0].toUpperCase()}
+      </div>
+    );
+  };
+
   const renderChat = (endRef = messagesEndRef) => (
     <section className="card chat-card">
       <div className="section-header">
@@ -792,7 +803,7 @@ function RoomPage() {
       {replyTo && (
         <div className="reply-preview">
           <div className="reply-preview-top">
-            <strong>Reply to {replyTo.username}</strong>
+            <strong>Ответ {replyTo.username}</strong>
             <button
               type="button"
               className="reply-clear-button"
@@ -819,17 +830,37 @@ function RoomPage() {
         {messages.map((msg) => {
           const isSystem = msg.username === "Система" || msg.system;
 
+          if (isSystem) {
+            return (
+              <div
+                key={msg.id || `${msg.username}-${msg.time}-${msg.message}`}
+                className="message-system-row"
+              >
+                {msg.message}
+              </div>
+            );
+          }
+
           return (
             <div
               key={msg.id || `${msg.username}-${msg.time}-${msg.message}`}
-              className={`message-item ${isSystem ? "message-system" : ""}`}
+              className="message-row"
               onClick={() => handleReply(msg)}
             >
-              <div className="message-top">
-                <strong>{msg.username}</strong>
-                <span className="message-time">{msg.time}</span>
+              {renderMsgAvatar(msg)}
+              <div className="message-content">
+                {msg.replyTo && (
+                  <div className="message-reply-quote">
+                    <span className="message-reply-author">{msg.replyTo.username}</span>
+                    <span className="message-reply-text">{msg.replyTo.message}</span>
+                  </div>
+                )}
+                <div className="message-header-row">
+                  <span className="message-username">{msg.username}</span>
+                  <span className="message-time">{msg.time}</span>
+                </div>
+                <div className="message-body">{msg.message}</div>
               </div>
-              <div className="message-body">{msg.message}</div>
             </div>
           );
         })}
@@ -840,7 +871,7 @@ function RoomPage() {
         <input
           className="app-input chat-input"
           type="text"
-          placeholder={replyTo ? `Reply to ${replyTo.username}` : "Введите сообщение"}
+          placeholder={replyTo ? `Ответ ${replyTo.username}...` : "Сообщение"}
           value={message}
           onChange={(e) => setMessage(e.target.value)}
           onKeyDown={(e) => {
@@ -848,7 +879,7 @@ function RoomPage() {
           }}
         />
         <button className="secondary-button send-button" onClick={sendMessage}>
-          Отправить
+          →
         </button>
       </div>
     </section>
