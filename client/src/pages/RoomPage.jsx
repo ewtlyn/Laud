@@ -12,69 +12,54 @@ const socket = io(SERVER_URL, {
   reconnectionAttempts: Infinity,
   reconnectionDelay: 1000,
   reconnectionDelayMax: 5000,
-  transports: ["websocket", "polling"]
+  transports: ["websocket", "polling"],
 });
 
-function extractYoutubeId(url) {
-  try {
-    const p = new URL(url);
-    if (p.hostname.includes("youtu.be")) return p.pathname.split("/").filter(Boolean)[0] || null;
-    if (p.hostname.includes("youtube.com")) {
-      if (p.pathname === "/watch") return p.searchParams.get("v");
-      if (p.pathname.startsWith("/embed/")) return p.pathname.split("/embed/")[1]?.split(/[?/&]/)[0] || null;
-      if (p.pathname.startsWith("/shorts/")) return p.pathname.split("/shorts/")[1]?.split(/[?/&]/)[0] || null;
-    }
-  } catch {}
-  return null;
-}
+// ─── helpers ────────────────────────────────────────────────────────────────
 
 function normalizeVkUrl(url) {
   if (!url) return url;
   if (url.includes("video_ext.php")) return url;
-
-  const match = url.match(/video(-?\d+)_(\d+)/);
-  if (match) {
-    return `https://vk.com/video_ext.php?oid=${match[1]}&id=${match[2]}`;
-  }
-
+  const m = url.match(/video(-?\d+)_(\d+)/);
+  if (m) return `https://vk.com/video_ext.php?oid=${m[1]}&id=${m[2]}`;
   return url;
 }
 
 function detectVideoType(url) {
   if (!url) return "file";
-
-  const lowerUrl = url.toLowerCase();
-
-  if (lowerUrl.includes("youtube.com") || lowerUrl.includes("youtu.be")) {
-    return "youtube";
-  }
-
+  const l = url.toLowerCase();
+  if (l.includes("youtube.com") || l.includes("youtu.be")) return "youtube";
   if (
-    lowerUrl.includes("vk.com/video_ext.php") ||
-    lowerUrl.includes("vkvideo.ru/video_ext.php") ||
-    lowerUrl.includes("vk.com/video") ||
-    lowerUrl.includes("vkvideo.ru/video")
-  ) {
-    return "vk";
-  }
-
+    l.includes("vk.com/video_ext.php") ||
+    l.includes("vkvideo.ru/video_ext.php") ||
+    l.includes("vk.com/video") ||
+    l.includes("vkvideo.ru/video")
+  ) return "vk";
   return "file";
 }
 
 function getOrCreateClientId() {
-  const existing = localStorage.getItem("laud_client_id");
-  if (existing) return existing;
-
-  const created =
-    typeof crypto !== "undefined" && crypto.randomUUID
+  const k = "laud_client_id";
+  let id = localStorage.getItem(k);
+  if (!id) {
+    id = typeof crypto !== "undefined" && crypto.randomUUID
       ? crypto.randomUUID()
       : `client_${Date.now()}_${Math.random().toString(36).slice(2, 8)}`;
-
-  localStorage.setItem("laud_client_id", created);
-  return created;
+    localStorage.setItem(k, id);
+  }
+  return id;
 }
 
-function RoomPage() {
+function getExpectedTime(state) {
+  const base = Number(state?.currentTime) || 0;
+  const lastAt = Number(state?.lastActionAt) || Date.now();
+  if (!state?.isPlaying) return base;
+  return base + Math.max(0, (Date.now() - lastAt) / 1000);
+}
+
+// ─── component ──────────────────────────────────────────────────────────────
+
+export default function RoomPage() {
   const { roomId } = useParams();
   const location = useLocation();
   const navigate = useNavigate();
@@ -85,461 +70,278 @@ function RoomPage() {
   const clientIdRef = useRef(getOrCreateClientId());
   const htmlVideoRef = useRef(null);
   const messagesEndRef = useRef(null);
-  const messagesEndRef2 = useRef(null);
-  const reconnectSyncTimeoutRef = useRef(null);
-  const suppressHtmlEventsRef = useRef(false);
+  const suppressHtmlRef = useRef(false);
   const leavingRef = useRef(false);
-  const lastFileSyncSecondRef = useRef(-1);
+  const lastFileSyncRef = useRef(-1);
   const videoUrlRef = useRef("");
   const videoTypeRef = useRef("file");
   const playingRef = useRef(false);
-  const youtubeSeekRef = useRef(0);
-  const lastRemoteSyncRef = useRef(0);
+  const ytSeekRef = useRef(0);
+  const lastSyncRef = useRef(0);
   const lastVideoStateRef = useRef(null);
 
   const [users, setUsers] = useState([]);
   const [hostClientId, setHostClientId] = useState("");
   const [videoUrl, setVideoUrl] = useState("");
   const [videoType, setVideoType] = useState("file");
-  const [youtubeSeekTime, setYoutubeSeekTime] = useState(0);
+  const [ytSeekTime, setYtSeekTime] = useState(0);
   const [inputUrl, setInputUrl] = useState("");
   const [messages, setMessages] = useState([]);
   const [message, setMessage] = useState("");
   const [playing, setPlaying] = useState(false);
-  const [sidebarOpen, setSidebarOpen] = useState(false);
   const [playerError, setPlayerError] = useState("");
   const [isConnected, setIsConnected] = useState(socket.connected);
   const [replyTo, setReplyTo] = useState(null);
-  const [useYoutubeProxy, setUseYoutubeProxy] = useState(
-    () => localStorage.getItem("laud_yt_proxy") === "1"
-  );
-  const useYoutubeProxyRef = useRef(localStorage.getItem("laud_yt_proxy") === "1");
-
   const [roomSettings, setRoomSettings] = useState({
     allowParticipantControls: true,
-    allowVideoSuggestions: true
+    allowVideoSuggestions: true,
   });
   const [settingsOpen, setSettingsOpen] = useState(false);
   const [pendingSuggestions, setPendingSuggestions] = useState([]);
   const [suggestUrl, setSuggestUrl] = useState("");
   const [suggestionSent, setSuggestionSent] = useState(false);
-  const [mobileMenuOpen, setMobileMenuOpen] = useState(false);
+  const [drawerOpen, setDrawerOpen] = useState(false);
+  const [menuOpen, setMenuOpen] = useState(false);
   const [keyboardOpen, setKeyboardOpen] = useState(false);
 
-  useEffect(() => {
-    videoUrlRef.current = videoUrl;
-  }, [videoUrl]);
+  // keep refs in sync
+  useEffect(() => { videoUrlRef.current = videoUrl; }, [videoUrl]);
+  useEffect(() => { videoTypeRef.current = videoType; }, [videoType]);
+  useEffect(() => { playingRef.current = playing; }, [playing]);
+  useEffect(() => { ytSeekRef.current = ytSeekTime; }, [ytSeekTime]);
 
-  useEffect(() => {
-    videoTypeRef.current = videoType;
-  }, [videoType]);
-
-  useEffect(() => {
-    playingRef.current = playing;
-  }, [playing]);
-
-  useEffect(() => {
-    youtubeSeekRef.current = youtubeSeekTime;
-  }, [youtubeSeekTime]);
-
-  useEffect(() => {
-    useYoutubeProxyRef.current = useYoutubeProxy;
-  }, [useYoutubeProxy]);
-
-  useEffect(() => {
-    const handleResize = () => {
-      if (window.innerWidth > 640) {
-        setSidebarOpen(false);
-      }
-    };
-
-    window.addEventListener("resize", handleResize);
-    return () => window.removeEventListener("resize", handleResize);
-  }, []);
-
-  useEffect(() => {
-    const mq = window.matchMedia("(max-width: 980px)");
-    const apply = (mobile) => {
-      document.documentElement.style.height = mobile ? "100%" : "";
-      document.body.style.height = mobile ? "100%" : "";
-      document.body.style.overflow = mobile ? "hidden" : "";
-      const root = document.getElementById("root");
-      if (root) {
-        root.style.height = mobile ? "100%" : "";
-        root.style.overflow = mobile ? "hidden" : "";
-      }
-    };
-    apply(mq.matches);
-    const handler = (e) => apply(e.matches);
-    mq.addEventListener("change", handler);
-    return () => {
-      mq.removeEventListener("change", handler);
-      document.documentElement.style.height = "";
-      document.body.style.height = "";
-      document.body.style.overflow = "";
-      const root = document.getElementById("root");
-      if (root) { root.style.height = ""; root.style.overflow = ""; }
-    };
-  }, []);
-
+  // ─── visual viewport / keyboard detection ─────────────────────────────────
   useEffect(() => {
     const vv = window.visualViewport;
-    if (!vv) return;
 
-    const baseline = vv.height;
-
-    const update = () => {
-      const h = vv.height;
-      const isOpen = baseline - h > 120;
+    const updateHeight = () => {
+      const h = vv ? vv.height : window.innerHeight;
       document.documentElement.style.setProperty("--app-height", `${h}px`);
-      setKeyboardOpen(isOpen);
     };
 
     const onFocusIn = (e) => {
       if (!e.target.matches("input, textarea")) return;
-      setTimeout(update, 350);
+      setTimeout(() => {
+        const h = vv ? vv.height : window.innerHeight;
+        const winH = window.screen.height;
+        setKeyboardOpen(winH - h > 150);
+        updateHeight();
+      }, 350);
     };
 
     const onFocusOut = (e) => {
       if (!e.target.matches("input, textarea")) return;
       setTimeout(() => {
         if (!document.activeElement?.matches("input, textarea")) {
-          document.documentElement.style.setProperty("--app-height", `${baseline}px`);
           setKeyboardOpen(false);
+          updateHeight();
         }
-      }, 100);
+      }, 150);
     };
 
-    update();
-    vv.addEventListener("resize", update);
-    window.addEventListener("resize", update);
+    updateHeight();
+    if (vv) vv.addEventListener("resize", updateHeight);
+    window.addEventListener("resize", updateHeight);
     document.addEventListener("focusin", onFocusIn);
     document.addEventListener("focusout", onFocusOut);
 
     return () => {
-      vv.removeEventListener("resize", update);
-      window.removeEventListener("resize", update);
+      if (vv) vv.removeEventListener("resize", updateHeight);
+      window.removeEventListener("resize", updateHeight);
       document.removeEventListener("focusin", onFocusIn);
       document.removeEventListener("focusout", onFocusOut);
       document.documentElement.style.removeProperty("--app-height");
     };
   }, []);
 
-  const isHost = useMemo(() => {
-    return hostClientId === clientIdRef.current;
-  }, [hostClientId]);
+  const isHost = useMemo(
+    () => hostClientId === clientIdRef.current,
+    [hostClientId]
+  );
 
-  const getExpectedTime = (state) => {
-    const baseTime = Number(state?.currentTime) || 0;
-    const lastActionAt =
-      Number(state?.lastActionAt) ||
-      Number(state?.emittedAt) ||
-      Date.now();
-    const isPlayingNow = Boolean(state?.isPlaying);
-
-    if (!isPlayingNow) return baseTime;
-
-    const elapsed = Math.max(0, (Date.now() - lastActionAt) / 1000);
-    return baseTime + elapsed;
-  };
-
-  const applyRemoteVideoState = (state) => {
+  // ─── apply remote state ────────────────────────────────────────────────────
+  const applyRemoteState = (state) => {
     if (!state) return;
     lastVideoStateRef.current = state;
 
-    const nextType = state.videoType || "file";
-    const expectedTime = getExpectedTime(state);
+    const type = state.videoType || "file";
+    const t = getExpectedTime(state);
 
     setVideoUrl(state.videoUrl || "");
-    setVideoType(nextType);
+    setVideoType(type);
     setPlaying(Boolean(state.isPlaying));
     setPlayerError("");
 
-    // VK: controlled by VKSyncPlayer via seekToSeconds/playing props
-    if (nextType === "vk") {
-      const currentSeek = youtubeSeekRef.current || 0;
-      if (Math.abs(currentSeek - expectedTime) > 2) {
-        setYoutubeSeekTime(expectedTime);
-      }
+    if (type === "youtube" || type === "vk") {
+      if (Math.abs(ytSeekRef.current - t) > 2) setYtSeekTime(t);
       return;
     }
 
-    // YouTube IFrame (no proxy): controlled by YouTubeSyncPlayer via seekToSeconds/playing props
-    if (nextType === "youtube" && !useYoutubeProxyRef.current) {
-      const currentSeek = youtubeSeekRef.current || 0;
-      if (Math.abs(currentSeek - expectedTime) > 2) {
-        setYoutubeSeekTime(expectedTime);
-      }
-      return;
-    }
-
-    // File video OR YouTube via proxy: direct control of htmlVideoRef
+    // file / direct video
     if (htmlVideoRef.current) {
-      suppressHtmlEventsRef.current = true;
+      suppressHtmlRef.current = true;
       try {
-        const current = Number(htmlVideoRef.current.currentTime) || 0;
-        if (Math.abs(current - expectedTime) > 2) {
-          htmlVideoRef.current.currentTime = expectedTime;
-        }
-        if (state.isPlaying && htmlVideoRef.current.paused) {
+        if (Math.abs(htmlVideoRef.current.currentTime - t) > 2)
+          htmlVideoRef.current.currentTime = t;
+        if (state.isPlaying && htmlVideoRef.current.paused)
           htmlVideoRef.current.play().catch(() => {});
-        } else if (!state.isPlaying && !htmlVideoRef.current.paused) {
+        else if (!state.isPlaying && !htmlVideoRef.current.paused)
           htmlVideoRef.current.pause();
-        }
       } catch {}
-      setTimeout(() => { suppressHtmlEventsRef.current = false; }, 250);
+      setTimeout(() => { suppressHtmlRef.current = false; }, 250);
     }
   };
 
-  const requestFreshRoomState = () => {
-    socket.emit("get_room_state", { roomId }, (response) => {
-      if (!response?.ok) return;
-
-      if (response.users) setUsers(response.users);
-      if (response.hostClientId) setHostClientId(response.hostClientId);
-      if (response.messages) setMessages(response.messages);
-      if (response.settings) setRoomSettings(response.settings);
-      if (response.suggestions) setPendingSuggestions(response.suggestions);
-      if (response.videoState) applyRemoteVideoState(response.videoState);
+  const requestFreshState = () => {
+    socket.emit("get_room_state", { roomId }, (r) => {
+      if (!r?.ok) return;
+      if (r.users) setUsers(r.users);
+      if (r.hostClientId) setHostClientId(r.hostClientId);
+      if (r.messages) setMessages(r.messages);
+      if (r.settings) setRoomSettings(r.settings);
+      if (r.suggestions) setPendingSuggestions(r.suggestions);
+      if (r.videoState) applyRemoteState(r.videoState);
     });
   };
 
+  // ─── socket setup ──────────────────────────────────────────────────────────
   useEffect(() => {
-    if (!username) {
-      navigate("/");
-      return;
-    }
+    if (!username) { navigate("/"); return; }
 
-    const joinRoom = () => {
-      const avatar = localStorage.getItem("laud_avatar") || "";
-      socket.emit(
-        "join_room",
-        {
-          roomId,
-          username,
-          clientId: clientIdRef.current,
-          avatar
-        },
-        () => {}
-      );
+    const join = () => {
+      socket.emit("join_room", {
+        roomId,
+        username,
+        clientId: clientIdRef.current,
+        avatar: localStorage.getItem("laud_avatar") || "",
+      }, () => {});
     };
 
     const onConnect = () => {
       setIsConnected(true);
-      joinRoom();
-
-      clearTimeout(reconnectSyncTimeoutRef.current);
-      reconnectSyncTimeoutRef.current = setTimeout(() => {
-        requestFreshRoomState();
-      }, 350);
+      join();
+      setTimeout(requestFreshState, 350);
     };
+    const onDisconnect = () => setIsConnected(false);
 
-    const onDisconnect = () => {
-      setIsConnected(false);
-    };
-
-    const onRoomSnapshot = ({ users, hostClientId, videoState, messages, settings, suggestions }) => {
+    const onSnapshot = ({ users, hostClientId, videoState, messages, settings, suggestions }) => {
       setUsers(users || []);
       setHostClientId(hostClientId || "");
       setMessages(messages || []);
       if (settings) setRoomSettings(settings);
       if (suggestions) setPendingSuggestions(suggestions);
-
-      if (videoState) {
-        applyRemoteVideoState(videoState);
-      }
+      if (videoState) applyRemoteState(videoState);
     };
 
-    const onRoomUsers = (usersList) => {
-      setUsers(usersList || []);
+    const onRoomUsers = (list) => setUsers(list || []);
+    const onHostData = (d) => setHostClientId(d.hostClientId || "");
+    const onVideoState = (s) => applyRemoteState(s);
+    const onRoomSettings = (s) => {
+      setRoomSettings(s || { allowParticipantControls: true, allowVideoSuggestions: true });
+      if (!s?.allowVideoSuggestions) setPendingSuggestions([]);
     };
+    const onNewSuggestion = (sug) => setPendingSuggestions((p) => [...p, sug]);
+    const onSuggestionResponse = () => setSuggestionSent(false);
 
-    const onHostData = (data) => {
-      setHostClientId(data.hostClientId || "");
-    };
+    const onPlay = ({ currentTime, lastActionAt }) =>
+      applyRemoteState({ videoUrl: videoUrlRef.current, videoType: videoTypeRef.current, currentTime, isPlaying: true, lastActionAt });
+    const onPause = ({ currentTime, lastActionAt }) =>
+      applyRemoteState({ videoUrl: videoUrlRef.current, videoType: videoTypeRef.current, currentTime, isPlaying: false, lastActionAt });
+    const onSeek = ({ currentTime, lastActionAt }) =>
+      applyRemoteState({ videoUrl: videoUrlRef.current, videoType: videoTypeRef.current, currentTime, isPlaying: playingRef.current, lastActionAt });
 
-    const onVideoState = (state) => {
-      applyRemoteVideoState(state);
-    };
-
-    const onRoomSettings = (settings) => {
-      setRoomSettings(settings || { allowParticipantControls: true, allowVideoSuggestions: true });
-      if (!settings?.allowVideoSuggestions) {
-        setPendingSuggestions([]);
-      }
-    };
-
-    const onNewSuggestion = (suggestion) => {
-      setPendingSuggestions((prev) => [...prev, suggestion]);
-    };
-
-    const onSuggestionResponse = () => {
-      setSuggestionSent(false);
-    };
-
-    const onPlayVideo = ({ currentTime, lastActionAt, emittedAt }) => {
-      applyRemoteVideoState({
-        videoUrl: videoUrlRef.current,
-        videoType: videoTypeRef.current,
-        currentTime,
-        isPlaying: true,
-        lastActionAt: lastActionAt || emittedAt
-      });
-    };
-
-    const onPauseVideo = ({ currentTime, lastActionAt, emittedAt }) => {
-      applyRemoteVideoState({
-        videoUrl: videoUrlRef.current,
-        videoType: videoTypeRef.current,
-        currentTime,
-        isPlaying: false,
-        lastActionAt: lastActionAt || emittedAt
-      });
-    };
-
-    const onSeekVideo = ({ currentTime, lastActionAt, emittedAt }) => {
-      applyRemoteVideoState({
-        videoUrl: videoUrlRef.current,
-        videoType: videoTypeRef.current,
-        currentTime,
-        isPlaying: playingRef.current,
-        lastActionAt: lastActionAt || emittedAt
-      });
-    };
-
-    const onSyncProgress = ({
-      currentTime,
-      isPlaying,
-      lastActionAt,
-      emittedAt
-    }) => {
+    const onSyncProgress = ({ currentTime, isPlaying, lastActionAt }) => {
       if (isHost) return;
-
       const now = Date.now();
+      if (now - lastSyncRef.current < 1200) return;
+      lastSyncRef.current = now;
 
-      if (now - lastRemoteSyncRef.current < 1200) return;
-      lastRemoteSyncRef.current = now;
+      const t = getExpectedTime({ currentTime, isPlaying, lastActionAt });
 
-      const next = getExpectedTime({
-        currentTime,
-        isPlaying,
-        lastActionAt: lastActionAt || emittedAt
-      });
-
-      if (videoTypeRef.current === "youtube") {
+      if (videoTypeRef.current === "youtube" || videoTypeRef.current === "vk") {
         setPlaying(Boolean(isPlaying));
-
-        const localSeek = youtubeSeekRef.current || 0;
-        const diff = Math.abs(localSeek - next);
-
-        if (diff > 2) {
-          setYoutubeSeekTime(next);
-        }
+        if (Math.abs(ytSeekRef.current - t) > 2) setYtSeekTime(t);
         return;
       }
 
-      if (videoTypeRef.current === "file" && htmlVideoRef.current) {
-        const current = Number(htmlVideoRef.current.currentTime) || 0;
-        const diff = Math.abs(current - next);
-
-        suppressHtmlEventsRef.current = true;
-
+      if (htmlVideoRef.current) {
+        suppressHtmlRef.current = true;
         try {
-          if (diff > 2) {
-            htmlVideoRef.current.currentTime = next;
-          }
-
-          if (isPlaying && htmlVideoRef.current.paused) {
+          if (Math.abs(htmlVideoRef.current.currentTime - t) > 2)
+            htmlVideoRef.current.currentTime = t;
+          if (isPlaying && htmlVideoRef.current.paused)
             htmlVideoRef.current.play().catch(() => {});
-          } else if (!isPlaying && !htmlVideoRef.current.paused) {
+          else if (!isPlaying && !htmlVideoRef.current.paused)
             htmlVideoRef.current.pause();
-          }
         } catch {}
-
         setPlaying(Boolean(isPlaying));
-
-        setTimeout(() => {
-          suppressHtmlEventsRef.current = false;
-        }, 250);
+        setTimeout(() => { suppressHtmlRef.current = false; }, 250);
       }
     };
 
-    const onReceiveMessage = (data) => {
+    const onMessage = (data) => {
       setMessages((prev) => {
-        if (prev.some((msg) => msg.id === data.id)) return prev;
+        if (prev.some((m) => m.id === data.id)) return prev;
         return [...prev, data];
       });
     };
 
     socket.on("connect", onConnect);
     socket.on("disconnect", onDisconnect);
-    socket.on("room_snapshot", onRoomSnapshot);
+    socket.on("room_snapshot", onSnapshot);
     socket.on("room_users", onRoomUsers);
     socket.on("host_data", onHostData);
     socket.on("video_state", onVideoState);
     socket.on("room_settings", onRoomSettings);
     socket.on("new_suggestion", onNewSuggestion);
     socket.on("suggestion_response", onSuggestionResponse);
-    socket.on("play_video", onPlayVideo);
-    socket.on("pause_video", onPauseVideo);
-    socket.on("seek_video", onSeekVideo);
+    socket.on("play_video", onPlay);
+    socket.on("pause_video", onPause);
+    socket.on("seek_video", onSeek);
     socket.on("sync_progress", onSyncProgress);
-    socket.on("receive_message", onReceiveMessage);
+    socket.on("receive_message", onMessage);
 
-    if (socket.connected) {
-      onConnect();
-    }
+    if (socket.connected) onConnect();
 
     return () => {
       socket.off("connect", onConnect);
       socket.off("disconnect", onDisconnect);
-      socket.off("room_snapshot", onRoomSnapshot);
+      socket.off("room_snapshot", onSnapshot);
       socket.off("room_users", onRoomUsers);
       socket.off("host_data", onHostData);
       socket.off("video_state", onVideoState);
       socket.off("room_settings", onRoomSettings);
       socket.off("new_suggestion", onNewSuggestion);
       socket.off("suggestion_response", onSuggestionResponse);
-      socket.off("play_video", onPlayVideo);
-      socket.off("pause_video", onPauseVideo);
-      socket.off("seek_video", onSeekVideo);
+      socket.off("play_video", onPlay);
+      socket.off("pause_video", onPause);
+      socket.off("seek_video", onSeek);
       socket.off("sync_progress", onSyncProgress);
-      socket.off("receive_message", onReceiveMessage);
-
-      clearTimeout(reconnectSyncTimeoutRef.current);
-
-      if (leavingRef.current) {
-        socket.emit("leave_room");
-      }
+      socket.off("receive_message", onMessage);
+      if (leavingRef.current) socket.emit("leave_room");
     };
-  }, [roomId, username, navigate, isHost]);
+  }, [roomId, username, navigate, isHost]); // eslint-disable-line
 
+  // auto-scroll chat
   useEffect(() => {
     messagesEndRef.current?.scrollIntoView({ behavior: "smooth" });
-    messagesEndRef2.current?.scrollIntoView({ behavior: "smooth" });
   }, [messages]);
 
+  // ─── host actions ─────────────────────────────────────────────────────────
   const handleSetVideo = () => {
-    if (!isHost) return;
-    if (!inputUrl.trim()) return;
-
-    const cleanUrl = normalizeVkUrl(inputUrl.trim());
-    const type = detectVideoType(cleanUrl);
-
-    setVideoUrl(cleanUrl);
+    if (!isHost || !inputUrl.trim()) return;
+    const clean = normalizeVkUrl(inputUrl.trim());
+    const type = detectVideoType(clean);
+    setVideoUrl(clean);
     setVideoType(type);
     setPlaying(false);
-    setYoutubeSeekTime(0);
+    setYtSeekTime(0);
     setPlayerError("");
-    lastFileSyncSecondRef.current = -1;
-    youtubeSeekRef.current = 0;
-    lastRemoteSyncRef.current = 0;
-
-    socket.emit("set_video", {
-      roomId,
-      videoUrl: cleanUrl,
-      videoType: type
-    });
+    lastFileSyncRef.current = -1;
+    ytSeekRef.current = 0;
+    lastSyncRef.current = 0;
+    socket.emit("set_video", { roomId, videoUrl: clean, videoType: type });
+    setInputUrl("");
   };
 
   const handleUpdateSettings = (patch) => {
@@ -549,366 +351,281 @@ function RoomPage() {
   };
 
   const handleTransferHost = (targetClientId) => {
-    socket.emit("transfer_host", { roomId, targetClientId }, (res) => {
-      if (res?.ok) {
-        setSettingsOpen(false);
-      }
+    socket.emit("transfer_host", { roomId, targetClientId }, (r) => {
+      if (r?.ok) setSettingsOpen(false);
     });
   };
 
   const handleSuggestVideo = () => {
     if (!suggestUrl.trim()) return;
-    const cleanUrl = normalizeVkUrl(suggestUrl.trim());
-    socket.emit("suggest_video", { roomId, videoUrl: cleanUrl }, (res) => {
-      if (res?.ok) {
-        setSuggestionSent(true);
-        setSuggestUrl("");
+    const clean = normalizeVkUrl(suggestUrl.trim());
+    socket.emit("suggest_video", { roomId, videoUrl: clean }, (r) => {
+      if (r?.ok) { setSuggestionSent(true); setSuggestUrl(""); }
+    });
+  };
+
+  const handleRespondSuggestion = (id, approved) => {
+    socket.emit("respond_suggestion", { roomId, suggestionId: id, approved }, (r) => {
+      if (r?.ok) {
+        setPendingSuggestions((p) => p.filter((s) => s.id !== id));
+        if (approved) { setYtSeekTime(0); ytSeekRef.current = 0; }
       }
     });
   };
 
-  const handleRespondSuggestion = (suggestionId, approved) => {
-    socket.emit("respond_suggestion", { roomId, suggestionId, approved }, (res) => {
-      if (res?.ok) {
-        setPendingSuggestions((prev) => prev.filter((s) => s.id !== suggestionId));
-        if (approved) {
-          setYoutubeSeekTime(0);
-          youtubeSeekRef.current = 0;
-          lastRemoteSyncRef.current = 0;
-        }
-      }
-    });
+  // file video handlers
+  const onFilePlay = () => {
+    if (!isHost || suppressHtmlRef.current || !htmlVideoRef.current) return;
+    socket.emit("play_video", { roomId, currentTime: htmlVideoRef.current.currentTime });
   };
-
-  const handleFilePlay = () => {
-    if (!isHost || suppressHtmlEventsRef.current || !htmlVideoRef.current) return;
-
-    socket.emit("play_video", {
-      roomId,
-      currentTime: htmlVideoRef.current.currentTime
-    });
+  const onFilePause = () => {
+    if (!isHost || suppressHtmlRef.current || !htmlVideoRef.current) return;
+    socket.emit("pause_video", { roomId, currentTime: htmlVideoRef.current.currentTime });
   };
-
-  const handleFilePause = () => {
-    if (!isHost || suppressHtmlEventsRef.current || !htmlVideoRef.current) return;
-
-    socket.emit("pause_video", {
-      roomId,
-      currentTime: htmlVideoRef.current.currentTime
-    });
+  const onFileSeeked = () => {
+    if (!isHost || suppressHtmlRef.current || !htmlVideoRef.current) return;
+    socket.emit("seek_video", { roomId, currentTime: htmlVideoRef.current.currentTime });
   };
-
-  const handleFileSeeked = () => {
-    if (!isHost || suppressHtmlEventsRef.current || !htmlVideoRef.current) return;
-
-    socket.emit("seek_video", {
-      roomId,
-      currentTime: htmlVideoRef.current.currentTime
-    });
-  };
-
-  const handleFileTimeUpdate = () => {
+  const onFileTimeUpdate = () => {
     if (!isHost || !htmlVideoRef.current) return;
-
-    const current = Number(htmlVideoRef.current.currentTime) || 0;
-    const rounded = Math.floor(current);
-
-    if (rounded === lastFileSyncSecondRef.current) return;
-    lastFileSyncSecondRef.current = rounded;
-
+    const rounded = Math.floor(htmlVideoRef.current.currentTime);
+    if (rounded === lastFileSyncRef.current) return;
+    lastFileSyncRef.current = rounded;
     socket.emit("sync_progress", {
       roomId,
-      currentTime: current,
-      isPlaying: !htmlVideoRef.current.paused
+      currentTime: htmlVideoRef.current.currentTime,
+      isPlaying: !htmlVideoRef.current.paused,
     });
   };
 
-  const handleVkPlay = (currentTime) => {
-    if (!isHost) return;
-    socket.emit("play_video", { roomId, currentTime });
+  const revertToHostState = () => {
+    suppressHtmlRef.current = true;
+    const v = htmlVideoRef.current;
+    if (!v) return;
+    if (playingRef.current && v.paused) v.play().catch(() => {});
+    if (!playingRef.current && !v.paused) v.pause();
+    setTimeout(() => { suppressHtmlRef.current = false; }, 300);
   };
 
-  const handleVkPause = (currentTime) => {
+  // VK — sync controlled externally via props; host uses sync bar
+  const handleVkSyncPlay = () => {
     if (!isHost) return;
-    socket.emit("pause_video", { roomId, currentTime });
+    socket.emit("play_video", { roomId, currentTime: ytSeekRef.current });
+    setPlaying(true);
+  };
+  const handleVkSyncPause = () => {
+    if (!isHost) return;
+    socket.emit("pause_video", { roomId, currentTime: ytSeekRef.current });
+    setPlaying(false);
   };
 
-  const handleVkProgress = (currentTime, isPlaying) => {
-    if (!isHost) return;
-    socket.emit("sync_progress", { roomId, currentTime, isPlaying: isPlaying ?? playingRef.current });
+  // YouTube handlers
+  const onYtPlay = (t) => { if (isHost) socket.emit("play_video", { roomId, currentTime: t }); };
+  const onYtPause = (t) => { if (isHost) socket.emit("pause_video", { roomId, currentTime: t }); };
+  const onYtProgress = (t, p) => {
+    if (isHost) socket.emit("sync_progress", { roomId, currentTime: t, isPlaying: p ?? playingRef.current });
   };
 
-  const handleYoutubePlay = (currentTime) => {
-    if (!isHost) return;
-
-    socket.emit("play_video", {
-      roomId,
-      currentTime
-    });
-  };
-
-  const handleYoutubePause = (currentTime) => {
-    if (!isHost) return;
-
-    socket.emit("pause_video", {
-      roomId,
-      currentTime
-    });
-  };
-
-  const handleYoutubeProgress = (currentTime, isPlaying) => {
-    if (!isHost) return;
-
-    socket.emit("sync_progress", {
-      roomId,
-      currentTime,
-      isPlaying: isPlaying ?? playingRef.current
-    });
-  };
-
+  // chat
   const sendMessage = () => {
     if (!message.trim()) return;
-
     const text = message.trim();
-    const clientMessageId =
-      typeof crypto !== "undefined" && crypto.randomUUID
-        ? crypto.randomUUID()
-        : `msg_${Date.now()}_${Math.random().toString(36).slice(2, 8)}`;
-
+    const id = typeof crypto !== "undefined" && crypto.randomUUID
+      ? crypto.randomUUID()
+      : `msg_${Date.now()}_${Math.random().toString(36).slice(2, 8)}`;
     socket.emit("send_message", {
-      roomId,
-      username,
-      message: text,
-      clientMessageId,
+      roomId, username, message: text, clientMessageId: id,
       avatar: localStorage.getItem("laud_avatar") || "",
-      replyTo: replyTo
-        ? { id: replyTo.id, username: replyTo.username, message: replyTo.message }
-        : null
+      replyTo: replyTo ? { id: replyTo.id, username: replyTo.username, message: replyTo.message } : null,
     });
-
     setMessage("");
     setReplyTo(null);
   };
 
-  const handleLeave = () => {
-    leavingRef.current = true;
-    navigate("/");
-  };
+  const handleLeave = () => { leavingRef.current = true; navigate("/"); };
 
-  const handleReply = (msg) => {
-    if (msg.username === "Система" || msg.system) return;
-    setReplyTo(msg);
-  };
+  // ─── render helpers ────────────────────────────────────────────────────────
+
+  const canControl = isHost || roomSettings.allowParticipantControls;
 
   const renderPlayer = () => {
-    const canControl = isHost || roomSettings.allowParticipantControls;
+    if (!videoUrl) {
+      return (
+        <div className="player-placeholder">
+          <span className="player-placeholder-icon">▶</span>
+          <span className="player-placeholder-text">Видео не выбрано</span>
+        </div>
+      );
+    }
 
-    const controlsOverlay = !canControl ? (
+    const overlay = !canControl ? (
       <div className="player-controls-overlay">
         <span className="player-controls-overlay-hint">Управление заблокировано</span>
       </div>
     ) : null;
 
-    if (!videoUrl) {
-      return <div className="player-placeholder">Видео пока не выбрано</div>;
-    }
-
-    if (videoType === "youtube" && useYoutubeProxy) {
-      const yid = extractYoutubeId(videoUrl);
-      const proxyUrl = yid ? `${SERVER_URL}/api/youtube-stream/${yid}` : null;
-
-      if (proxyUrl) {
-        const revertToHostStateProxy = () => {
-          suppressHtmlEventsRef.current = true;
-          const vid = htmlVideoRef.current;
-          if (!vid) return;
-          if (playingRef.current && vid.paused) vid.play().catch(() => {});
-          if (!playingRef.current && !vid.paused) vid.pause();
-          setTimeout(() => { suppressHtmlEventsRef.current = false; }, 300);
-        };
-        return (
-          <div className="player-wrap">
-            <video
-              ref={htmlVideoRef}
-              src={proxyUrl}
-              controls
-              onPlay={() => isHost ? handleFilePlay() : revertToHostStateProxy()}
-              onPause={() => isHost ? handleFilePause() : revertToHostStateProxy()}
-              onSeeked={() => { if (isHost) handleFileSeeked(); else requestFreshRoomState(); }}
-              onTimeUpdate={handleFileTimeUpdate}
-              onLoadedMetadata={() => {
-                if (!isHost && lastVideoStateRef.current && htmlVideoRef.current) {
-                  const expectedTime = getExpectedTime(lastVideoStateRef.current);
-                  suppressHtmlEventsRef.current = true;
-                  try {
-                    if (Math.abs(htmlVideoRef.current.currentTime - expectedTime) > 1) {
-                      htmlVideoRef.current.currentTime = expectedTime;
-                    }
-                    if (lastVideoStateRef.current.isPlaying) {
-                      htmlVideoRef.current.play().catch(() => {});
-                    }
-                  } catch {}
-                  setTimeout(() => { suppressHtmlEventsRef.current = false; }, 300);
-                }
-              }}
-              onWaiting={() => { if (!isHost) requestFreshRoomState(); }}
-              onStalled={() => { if (!isHost) requestFreshRoomState(); }}
-              className="player-video"
-            />
-            {controlsOverlay}
-          </div>
-        );
-      }
-    }
-
     if (videoType === "youtube") {
       return (
-        <div className="player-youtube-wrap">
+        <div className="player-stage" style={{ position: "relative" }}>
           <YouTubeSyncPlayer
             videoUrl={videoUrl}
             playing={playing}
-            seekToSeconds={youtubeSeekTime}
+            seekToSeconds={ytSeekTime}
             isHost={isHost}
-            onPlay={handleYoutubePlay}
-            onPause={handleYoutubePause}
-            onProgress={handleYoutubeProgress}
-            onError={(text) => setPlayerError(text)}
+            onPlay={onYtPlay}
+            onPause={onYtPause}
+            onProgress={onYtProgress}
+            onError={(t) => setPlayerError(t)}
           />
-          {controlsOverlay}
+          {overlay}
         </div>
       );
     }
 
     if (videoType === "vk") {
       return (
-        <div style={{ position: "relative" }}>
-          <VKSyncPlayer
-            videoUrl={videoUrl}
-            playing={playing}
-            seekToSeconds={youtubeSeekTime}
-            isHost={isHost}
-            onPlay={handleVkPlay}
-            onPause={handleVkPause}
-            onProgress={handleVkProgress}
-          />
-          {controlsOverlay}
+        <>
+          <div className="player-stage" style={{ position: "relative" }}>
+            <VKSyncPlayer
+              videoUrl={videoUrl}
+              playing={playing}
+              seekToSeconds={ytSeekTime}
+            />
+            {overlay}
+          </div>
           {isHost && (
             <div className="vk-sync-bar">
               <button
-                className="vk-sync-btn"
-                onClick={() => playing ? handleVkPause(youtubeSeekTime) : handleVkPlay(youtubeSeekTime)}
+                className="btn btn-secondary suggestion-btn"
+                onClick={playing ? handleVkSyncPause : handleVkSyncPlay}
               >
-                {playing ? "⏸ Пауза (синк)" : "▶ Играть (синк)"}
+                {playing ? "⏸ Пауза" : "▶ Играть"}
               </button>
-              <span className="vk-sync-hint">Используй эти кнопки для синхронизации</span>
+              <span className="vk-sync-hint">
+                Используй эти кнопки для синхронизации VK
+              </span>
             </div>
           )}
-        </div>
+        </>
       );
     }
 
-    const revertToHostState = () => {
-      suppressHtmlEventsRef.current = true;
-      const vid = htmlVideoRef.current;
-      if (!vid) return;
-      if (playingRef.current && vid.paused) vid.play().catch(() => {});
-      if (!playingRef.current && !vid.paused) vid.pause();
-      setTimeout(() => { suppressHtmlEventsRef.current = false; }, 300);
-    };
-
+    // file / direct url
     return (
-      <div className="player-wrap">
+      <div className="player-stage" style={{ position: "relative" }}>
         <video
           ref={htmlVideoRef}
           src={videoUrl}
           controls
-          onPlay={() => isHost ? handleFilePlay() : revertToHostState()}
-          onPause={() => isHost ? handleFilePause() : revertToHostState()}
-          onSeeked={() => {
-            if (isHost) { handleFileSeeked(); }
-            else { requestFreshRoomState(); }
-          }}
-          onTimeUpdate={handleFileTimeUpdate}
+          style={{ width: "100%", height: "100%", display: "block", background: "#000" }}
+          onPlay={() => isHost ? onFilePlay() : revertToHostState()}
+          onPause={() => isHost ? onFilePause() : revertToHostState()}
+          onSeeked={() => isHost ? onFileSeeked() : requestFreshState()}
+          onTimeUpdate={onFileTimeUpdate}
           onLoadedMetadata={() => {
             if (!isHost && lastVideoStateRef.current && htmlVideoRef.current) {
-              const expectedTime = getExpectedTime(lastVideoStateRef.current);
-              suppressHtmlEventsRef.current = true;
+              const t = getExpectedTime(lastVideoStateRef.current);
+              suppressHtmlRef.current = true;
               try {
-                if (Math.abs(htmlVideoRef.current.currentTime - expectedTime) > 1) {
-                  htmlVideoRef.current.currentTime = expectedTime;
-                }
-                if (lastVideoStateRef.current.isPlaying) {
+                if (Math.abs(htmlVideoRef.current.currentTime - t) > 1)
+                  htmlVideoRef.current.currentTime = t;
+                if (lastVideoStateRef.current.isPlaying)
                   htmlVideoRef.current.play().catch(() => {});
-                }
               } catch {}
-              setTimeout(() => { suppressHtmlEventsRef.current = false; }, 300);
+              setTimeout(() => { suppressHtmlRef.current = false; }, 300);
             }
           }}
-          onWaiting={() => { if (!isHost) requestFreshRoomState(); }}
-          onStalled={() => { if (!isHost) requestFreshRoomState(); }}
-          className="player-video"
+          onWaiting={() => { if (!isHost) requestFreshState(); }}
         />
-        {controlsOverlay}
+        {overlay}
       </div>
     );
   };
 
+  const renderMsg = (msg) => {
+    const sys = msg.system || msg.username === "Система";
+    if (sys) return (
+      <div key={msg.id} className="msg-system">{msg.message}</div>
+    );
+    return (
+      <div key={msg.id} className="msg-row" onClick={() => !sys && setReplyTo(msg)}>
+        {msg.avatar
+          ? <div className="msg-avatar"><img src={msg.avatar} alt="" /></div>
+          : <div className="msg-avatar-letter">{(msg.username || "?")[0].toUpperCase()}</div>
+        }
+        <div className="msg-content">
+          {msg.replyTo && (
+            <div className="msg-reply">
+              <span className="msg-reply-author">{msg.replyTo.username}</span>
+              <span className="msg-reply-text">{msg.replyTo.message}</span>
+            </div>
+          )}
+          <div className="msg-header">
+            <span className="msg-name">{msg.username}</span>
+            <span className="msg-time">{msg.time}</span>
+          </div>
+          <div className="msg-body">{msg.message}</div>
+        </div>
+      </div>
+    );
+  };
+
+  const renderUserItem = (user) => (
+    <div key={user.clientId || user.id} className="user-item">
+      <div className="user-avatar">
+        {user.avatar
+          ? <img src={user.avatar} alt="" />
+          : (user.username || "?")[0].toUpperCase()
+        }
+      </div>
+      <div className="user-meta">
+        <span className="user-name">{user.username}</span>
+        <span className="user-status">online</span>
+      </div>
+      {user.clientId === hostClientId && <span className="host-badge">HOST</span>}
+    </div>
+  );
+
   const renderSettings = () => {
     if (!settingsOpen) return null;
-
-    const otherUsers = users.filter((u) => u.clientId !== clientIdRef.current);
-
+    const others = users.filter((u) => u.clientId !== clientIdRef.current);
     return (
       <>
-        <div className="settings-backdrop" onClick={() => setSettingsOpen(false)} />
-        <div className="settings-modal">
-          <div className="settings-modal-header">
-            <h2 className="settings-modal-title">Настройки комнаты</h2>
-            <button
-              className="icon-button"
-              onClick={() => setSettingsOpen(false)}
-              type="button"
-            >
-              ✕
-            </button>
+        <div className="modal-backdrop" onClick={() => setSettingsOpen(false)} />
+        <div className="modal">
+          <div className="modal-header">
+            <h2 className="modal-title">Настройки комнаты</h2>
+            <button className="btn btn-icon" onClick={() => setSettingsOpen(false)}>✕</button>
           </div>
 
-          <div className="settings-section">
-            <div className="settings-section-label">Передать права хоста</div>
-            {otherUsers.length === 0 ? (
-              <p className="settings-empty-hint">Нет других участников в комнате</p>
-            ) : (
-              <div className="settings-users-list">
-                {otherUsers.map((u) => (
-                  <div key={u.clientId} className="settings-user-row">
-                    <div className="user-avatar settings-user-avatar">
-                      {(u.username || "?").slice(0, 1).toUpperCase()}
-                    </div>
-                    <span className="settings-user-name">{u.username}</span>
-                    <button
-                      className="secondary-button settings-transfer-btn"
-                      onClick={() => handleTransferHost(u.clientId)}
-                    >
-                      Передать
-                    </button>
+          <div className="modal-section">
+            <div className="modal-section-label">Передать права хоста</div>
+            {others.length === 0
+              ? <p className="modal-empty">Нет других участников</p>
+              : others.map((u) => (
+                <div key={u.clientId} className="modal-user-row">
+                  <div className="user-avatar" style={{ width: 28, height: 28, fontSize: 12 }}>
+                    {u.avatar ? <img src={u.avatar} alt="" /> : (u.username || "?")[0].toUpperCase()}
                   </div>
-                ))}
-              </div>
-            )}
+                  <span className="modal-user-name">{u.username}</span>
+                  <button className="btn btn-secondary modal-transfer-btn" onClick={() => handleTransferHost(u.clientId)}>
+                    Передать
+                  </button>
+                </div>
+              ))
+            }
           </div>
 
-          <div className="settings-divider" />
+          <div className="modal-divider" />
 
-          <div className="settings-section">
-            <label className="settings-toggle-row">
-              <div className="settings-toggle-text">
-                <span className="settings-toggle-label">Управление участниками</span>
-                <span className="settings-toggle-desc">
-                  Разрешить участникам ставить паузу и перематывать
-                </span>
+          <div className="modal-section">
+            <div className="toggle-row">
+              <div className="toggle-label-group">
+                <span className="toggle-label">Управление участниками</span>
+                <span className="toggle-desc">Разрешить участникам ставить паузу и перематывать</span>
               </div>
               <div
-                className={`toggle-track ${roomSettings.allowParticipantControls ? "toggle-on" : ""}`}
+                className={`toggle-track${roomSettings.allowParticipantControls ? " on" : ""}`}
                 onClick={() => handleUpdateSettings({ allowParticipantControls: !roomSettings.allowParticipantControls })}
                 role="switch"
                 aria-checked={roomSettings.allowParticipantControls}
@@ -917,21 +634,19 @@ function RoomPage() {
               >
                 <div className="toggle-thumb" />
               </div>
-            </label>
+            </div>
           </div>
 
-          <div className="settings-divider" />
+          <div className="modal-divider" />
 
-          <div className="settings-section">
-            <label className="settings-toggle-row">
-              <div className="settings-toggle-text">
-                <span className="settings-toggle-label">Предложения видео</span>
-                <span className="settings-toggle-desc">
-                  Участники могут предлагать видео на одобрение хоста
-                </span>
+          <div className="modal-section">
+            <div className="toggle-row">
+              <div className="toggle-label-group">
+                <span className="toggle-label">Предложения видео</span>
+                <span className="toggle-desc">Участники могут предлагать видео хосту</span>
               </div>
               <div
-                className={`toggle-track ${roomSettings.allowVideoSuggestions ? "toggle-on" : ""}`}
+                className={`toggle-track${roomSettings.allowVideoSuggestions ? " on" : ""}`}
                 onClick={() => handleUpdateSettings({ allowVideoSuggestions: !roomSettings.allowVideoSuggestions })}
                 role="switch"
                 aria-checked={roomSettings.allowVideoSuggestions}
@@ -940,257 +655,82 @@ function RoomPage() {
               >
                 <div className="toggle-thumb" />
               </div>
-            </label>
+            </div>
           </div>
         </div>
       </>
     );
   };
 
-  const renderMsgAvatar = (msg) => {
-    if (msg.avatar) {
-      return <img src={msg.avatar} className="msg-avatar msg-avatar-img" alt="" draggable={false} />;
-    }
-    return (
-      <div className="msg-avatar msg-avatar-letter">
-        {(msg.username || "?")[0].toUpperCase()}
-      </div>
-    );
-  };
-
-  const renderChat = (endRef = messagesEndRef) => (
-    <section className="card chat-card">
-      <div className="section-header">
-        <div>
-          <h2 className="section-title">Чат</h2>
-          <p className="section-subtitle">Общение в реальном времени</p>
-        </div>
-      </div>
-
-      {replyTo && (
-        <div className="reply-preview">
-          <div className="reply-preview-top">
-            <strong>Ответ {replyTo.username}</strong>
-            <button
-              type="button"
-              className="reply-clear-button"
-              onClick={() => setReplyTo(null)}
-            >
-              ✕
-            </button>
-          </div>
-          <div className="reply-preview-text">{replyTo.message}</div>
-        </div>
-      )}
-
-      <div className="chat-box modern-chat-box">
-        {messages.length === 0 && (
-          <div className="empty-state">
-            <div className="empty-state-icon">💬</div>
-            <div className="empty-state-title">Пока тихо</div>
-            <div className="empty-state-text">
-              Отправь первое сообщение в комнату
-            </div>
-          </div>
-        )}
-
-        {messages.map((msg) => {
-          const isSystem = msg.username === "Система" || msg.system;
-
-          if (isSystem) {
-            return (
-              <div
-                key={msg.id || `${msg.username}-${msg.time}-${msg.message}`}
-                className="message-system-row"
-              >
-                {msg.message}
-              </div>
-            );
-          }
-
-          return (
-            <div
-              key={msg.id || `${msg.username}-${msg.time}-${msg.message}`}
-              className="message-row"
-              onClick={() => handleReply(msg)}
-            >
-              {renderMsgAvatar(msg)}
-              <div className="message-content">
-                {msg.replyTo && (
-                  <div className="message-reply-quote">
-                    <span className="message-reply-author">{msg.replyTo.username}</span>
-                    <span className="message-reply-text">{msg.replyTo.message}</span>
-                  </div>
-                )}
-                <div className="message-header-row">
-                  <span className="message-username">{msg.username}</span>
-                  <span className="message-time">{msg.time}</span>
-                </div>
-                <div className="message-body">{msg.message}</div>
-              </div>
-            </div>
-          );
-        })}
-        <div ref={endRef} />
-      </div>
-
-      <div className="chat-input-row">
-        <input
-          className="app-input chat-input"
-          type="text"
-          placeholder={replyTo ? `Ответ ${replyTo.username}...` : "Сообщение"}
-          value={message}
-          onChange={(e) => setMessage(e.target.value)}
-          onKeyDown={(e) => {
-            if (e.key === "Enter") sendMessage();
-          }}
-        />
-        <button className="secondary-button send-button" onClick={sendMessage}>
-          →
-        </button>
-      </div>
-    </section>
-  );
-
-  const renderParticipants = (mobileDrawer = false) => (
-    <section
-      className={`card participants-card ${
-        mobileDrawer ? "participants-drawer mobile-open" : ""
-      }`}
-    >
-      <div className="section-header">
-        <div>
-          <h2 className="section-title">Участники</h2>
-          <p className="section-subtitle">{users.length} в комнате</p>
-        </div>
-
-        {mobileDrawer && (
-          <button
-            className="icon-button mobile-close-button"
-            onClick={() => setSidebarOpen(false)}
-            type="button"
-          >
-            ✕
-          </button>
-        )}
-      </div>
-
-      <div className="users-list">
-        {users.map((user) => (
-          <div key={user.clientId || user.id} className="user-item">
-            <div className="user-main">
-              {user.avatar ? (
-                <img
-                  src={user.avatar}
-                  className="user-avatar user-avatar-img"
-                  alt=""
-                  draggable={false}
-                />
-              ) : (
-                <div className="user-avatar">
-                  {(user.username || "?").slice(0, 1).toUpperCase()}
-                </div>
-              )}
-
-              <div className="user-meta">
-                <span className="user-name">{user.username}</span>
-                <span className="user-status">online</span>
-              </div>
-            </div>
-
-            {user.clientId === hostClientId && (
-              <span className="host-badge">HOST</span>
-            )}
-          </div>
-        ))}
-      </div>
-    </section>
-  );
-
+  // ─── JSX ───────────────────────────────────────────────────────────────────
   return (
-    <div className={`room-page room-shell${keyboardOpen ? " keyboard-open" : ""}`}>
+    <div className={`room-shell${keyboardOpen ? " keyboard-open" : ""}`}>
       {renderSettings()}
 
-      {sidebarOpen && (
+      {/* Participants drawer (mobile) */}
+      {drawerOpen && (
         <>
-          <div className="mobile-backdrop" onClick={() => setSidebarOpen(false)} />
-          {renderParticipants(true)}
+          <div className="drawer-backdrop" onClick={() => setDrawerOpen(false)} />
+          <div className="participants-drawer">
+            <div className="drawer-header">
+              <span className="drawer-title">Участники ({users.length})</span>
+              <button className="btn btn-icon" onClick={() => setDrawerOpen(false)}>✕</button>
+            </div>
+            <div className="drawer-body">
+              {users.map(renderUserItem)}
+            </div>
+          </div>
         </>
       )}
 
-      <div className="room-topbar">
-        <div className="room-topbar-left">
-          <h1 className="room-brand">LAUD</h1>
-
-          <div className="room-meta">
-            <span className="room-meta-item">Комната: {roomId}</span>
-            <span className="room-meta-sep">•</span>
-            <span className="room-meta-item">Вы: {username}</span>
-            {isHost && (
-              <>
-                <span className="room-meta-sep">•</span>
-                <span className="room-meta-item">Хост</span>
-              </>
-            )}
+      {/* Top bar */}
+      <header className="topbar">
+        <div className="topbar-left">
+          <span className="topbar-logo">LAUD</span>
+          <div className="topbar-info">
+            <span className="topbar-pill">#{roomId}</span>
+            <span className="topbar-pill">{username}</span>
+            {isHost && <span className="topbar-pill host">Host</span>}
           </div>
-
-          <div className={`room-status ${isConnected ? "online" : "offline"}`}>
-            <span className="status-dot" />
-            {isConnected ? "Онлайн" : "Переподключение..."}
+          <div className="topbar-status">
+            <span className={`status-dot${isConnected ? "" : " offline"}`} />
+            <span>{isConnected ? "Online" : "Reconnecting..."}</span>
           </div>
         </div>
 
-        <div className="room-topbar-actions">
-          {/* десктоп */}
+        <div className="topbar-actions">
+          {/* Desktop */}
           {isHost && (
-            <button
-              className="ghost-button settings-button desktop-only"
-              onClick={() => setSettingsOpen(true)}
-              type="button"
-            >
+            <button className="btn btn-ghost desktop-only" onClick={() => setSettingsOpen(true)}>
               Настройки
             </button>
           )}
-          <button className="ghost-button leave-button desktop-only" onClick={handleLeave}>
+          <button className="btn btn-ghost desktop-only" onClick={handleLeave}>
             Выйти
           </button>
 
-          {/* мобильный бургер */}
-          <div className="mobile-menu-wrap">
+          {/* Mobile burger */}
+          <div className="mobile-menu-wrap mobile-only" style={{ display: "block" }}>
             <button
-              className="mobile-burger-btn"
-              onClick={() => setMobileMenuOpen((v) => !v)}
+              className="btn btn-icon"
+              onClick={() => setMenuOpen((v) => !v)}
               aria-label="Меню"
-              type="button"
             >
               ☰
             </button>
-
-            {mobileMenuOpen && (
+            {menuOpen && (
               <>
-                <div
-                  className="mobile-menu-backdrop"
-                  onClick={() => setMobileMenuOpen(false)}
-                />
+                <div className="mobile-menu-backdrop" onClick={() => setMenuOpen(false)} />
                 <div className="mobile-menu-dropdown">
-                  <button
-                    className="mobile-menu-item"
-                    onClick={() => { setSidebarOpen(true); setMobileMenuOpen(false); }}
-                  >
+                  <button className="mobile-menu-item" onClick={() => { setDrawerOpen(true); setMenuOpen(false); }}>
                     Участники
                   </button>
                   {isHost && (
-                    <button
-                      className="mobile-menu-item"
-                      onClick={() => { setSettingsOpen(true); setMobileMenuOpen(false); }}
-                    >
+                    <button className="mobile-menu-item" onClick={() => { setSettingsOpen(true); setMenuOpen(false); }}>
                       Настройки
                     </button>
                   )}
-                  <button
-                    className="mobile-menu-item mobile-menu-leave"
-                    onClick={handleLeave}
-                  >
+                  <button className="mobile-menu-item mobile-menu-leave" onClick={handleLeave}>
                     Выйти
                   </button>
                 </div>
@@ -1198,19 +738,23 @@ function RoomPage() {
             )}
           </div>
         </div>
-      </div>
+      </header>
 
-      <div className="room-grid">
-        <main className="main-column">
-          <section className="card player-card">
-            <div className="section-header">
-              <h2 className="section-title">Плеер</h2>
-            </div>
+      {/* Body */}
+      <div className="room-body">
+        {/* Main panel: player + chat */}
+        <div className="main-panel">
+          {/* Player area */}
+          <div className="player-area">
+            {playerError && (
+              <div style={{ fontSize: 13, color: "#f87171", padding: "4px 0" }}>{playerError}</div>
+            )}
 
+            {/* Host suggestions */}
             {isHost && pendingSuggestions.length > 0 && (
               <div className="suggestions-panel">
                 <div className="suggestions-panel-title">
-                  Предложения видео ({pendingSuggestions.length})
+                  Предложения ({pendingSuggestions.length})
                 </div>
                 {pendingSuggestions.map((sug) => (
                   <div key={sug.id} className="suggestion-item">
@@ -1219,99 +763,136 @@ function RoomPage() {
                       <span className="suggestion-url">{sug.videoUrl}</span>
                     </div>
                     <div className="suggestion-actions">
-                      <button
-                        className="primary-button suggestion-btn"
-                        onClick={() => handleRespondSuggestion(sug.id, true)}
-                      >
-                        Принять
-                      </button>
-                      <button
-                        className="secondary-button suggestion-btn"
-                        onClick={() => handleRespondSuggestion(sug.id, false)}
-                      >
-                        Отклонить
-                      </button>
+                      <button className="btn btn-primary suggestion-btn" onClick={() => handleRespondSuggestion(sug.id, true)}>✓</button>
+                      <button className="btn btn-secondary suggestion-btn" onClick={() => handleRespondSuggestion(sug.id, false)}>✕</button>
                     </div>
                   </div>
                 ))}
               </div>
             )}
 
+            {/* Host URL input */}
             {isHost && (
-              <div className="video-toolbar">
+              <div className="host-controls">
                 <input
-                  className="app-input compact-input"
-                  type="text"
-                  placeholder="YouTube, mp4 или ссылка на видео VK"
+                  className="app-input"
+                  type="url"
+                  inputMode="url"
+                  placeholder="YouTube / VK / .mp4"
                   value={inputUrl}
                   onChange={(e) => setInputUrl(e.target.value)}
+                  onKeyDown={(e) => { if (e.key === "Enter") handleSetVideo(); }}
                 />
-
-                <button
-                  className="primary-button"
-                  onClick={handleSetVideo}
-                >
-                  Установить
+                <button className="btn btn-primary" onClick={handleSetVideo}>
+                  Поставить
                 </button>
               </div>
             )}
 
-            <div className="micro-hint">
-              {isHost ? "Вставьте ссылку и нажмите Установить." : "Хост управляет видео. Вы синхронизированы."}
-              {" "}
-              <label style={{ cursor: "pointer", userSelect: "none" }}>
-                <input
-                  type="checkbox"
-                  checked={useYoutubeProxy}
-                  onChange={(e) => {
-                    setUseYoutubeProxy(e.target.checked);
-                    localStorage.setItem("laud_yt_proxy", e.target.checked ? "1" : "0");
-                  }}
-                  style={{ marginRight: 4 }}
-                />
-                YouTube через прокси (для РФ)
-              </label>
-            </div>
-
+            {/* Participant suggest */}
             {!isHost && roomSettings.allowVideoSuggestions && (
-              <div className="suggest-row">
-                {suggestionSent ? (
-                  <div className="suggest-sent">
-                    Предложение отправлено — ожидайте одобрения хоста
-                  </div>
-                ) : (
-                  <>
+              suggestionSent
+                ? <div className="suggest-sent">Предложение отправлено — ожидайте одобрения</div>
+                : (
+                  <div className="suggest-row">
                     <input
-                      className="app-input compact-input"
-                      type="text"
+                      className="app-input"
+                      type="url"
+                      inputMode="url"
                       placeholder="Предложить видео хосту"
                       value={suggestUrl}
                       onChange={(e) => setSuggestUrl(e.target.value)}
                       onKeyDown={(e) => { if (e.key === "Enter") handleSuggestVideo(); }}
                     />
-                    <button className="secondary-button" onClick={handleSuggestVideo}>
-                      Предложить
+                    <button className="btn btn-secondary" onClick={handleSuggestVideo}>
+                      →
                     </button>
-                  </>
-                )}
+                  </div>
+                )
+            )}
+
+            {/* Player */}
+            {renderPlayer()}
+          </div>
+
+          {/* Chat panel */}
+          <div className="chat-panel">
+            {replyTo && (
+              <div className="reply-preview">
+                <div className="reply-preview-body">
+                  <div className="reply-preview-name">↩ {replyTo.username}</div>
+                  <div className="reply-preview-text">{replyTo.message}</div>
+                </div>
+                <button className="reply-clear" onClick={() => setReplyTo(null)}>✕</button>
               </div>
             )}
 
-            <div className="player-stage">{renderPlayer()}</div>
-          </section>
+            <div className="chat-messages">
+              {messages.length === 0 && (
+                <div className="chat-empty">
+                  <span className="chat-empty-icon">💬</span>
+                  <span className="chat-empty-text">Пока тихо — скажи привет</span>
+                </div>
+              )}
+              {messages.map(renderMsg)}
+              <div ref={messagesEndRef} />
+            </div>
 
-          <div className="mobile-chat-only">
-            {renderChat(messagesEndRef)}
+            <div className="chat-input-row">
+              <input
+                className="app-input chat-input"
+                type="text"
+                placeholder={replyTo ? `Ответ ${replyTo.username}…` : "Сообщение…"}
+                value={message}
+                onChange={(e) => setMessage(e.target.value)}
+                onKeyDown={(e) => { if (e.key === "Enter") sendMessage(); }}
+              />
+              <button className="send-btn" onClick={sendMessage} aria-label="Отправить">→</button>
+            </div>
           </div>
-        </main>
+        </div>
 
-        <aside className="side-column">
-          {renderParticipants(false)}
-          {renderChat(messagesEndRef2)}
+        {/* Side panel (desktop only) */}
+        <aside className="side-panel desktop-only" style={{ display: "flex" }}>
+          {/* Participants */}
+          <div className="side-section participants-section">
+            <div className="side-section-header">
+              <h2 className="side-section-title">Участники</h2>
+              <div className="side-section-sub">{users.length} онлайн</div>
+            </div>
+            <div className="participants-list">
+              {users.map(renderUserItem)}
+            </div>
+          </div>
+
+          {/* Side chat */}
+          <div className="side-section side-chat">
+            <div className="side-section-header">
+              <h2 className="side-section-title">Чат</h2>
+            </div>
+            <div className="side-chat-messages">
+              {messages.length === 0 && (
+                <div className="chat-empty" style={{ flex: "none", padding: "20px 0" }}>
+                  <span className="chat-empty-icon" style={{ fontSize: 22 }}>💬</span>
+                  <span className="chat-empty-text">Пока тихо</span>
+                </div>
+              )}
+              {messages.map(renderMsg)}
+            </div>
+            <div className="side-chat-input">
+              <input
+                className="app-input"
+                type="text"
+                placeholder="Сообщение…"
+                value={message}
+                onChange={(e) => setMessage(e.target.value)}
+                onKeyDown={(e) => { if (e.key === "Enter") sendMessage(); }}
+              />
+              <button className="send-btn" onClick={sendMessage} aria-label="Отправить">→</button>
+            </div>
+          </div>
         </aside>
       </div>
     </div>
   );
 }
-
-export default RoomPage;

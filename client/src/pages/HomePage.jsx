@@ -23,7 +23,7 @@ function resizeImageToBase64(file) {
   });
 }
 
-function HomePage() {
+export default function HomePage() {
   const [username, setUsername] = useState("");
   const [roomId, setRoomId] = useState("");
   const [avatar, setAvatar] = useState("");
@@ -31,10 +31,10 @@ function HomePage() {
   const navigate = useNavigate();
 
   useEffect(() => {
-    const savedName = localStorage.getItem("laudUsername");
-    if (savedName) setUsername(savedName);
-    const savedAvatar = localStorage.getItem("laud_avatar");
-    if (savedAvatar) setAvatar(savedAvatar);
+    const name = localStorage.getItem("laudUsername");
+    if (name) setUsername(name);
+    const av = localStorage.getItem("laud_avatar");
+    if (av) setAvatar(av);
   }, []);
 
   const handleAvatarChange = async (e) => {
@@ -42,42 +42,29 @@ function HomePage() {
     if (!file) return;
     e.target.value = "";
     try {
-      const base64 = await resizeImageToBase64(file);
-      setAvatar(base64);
-      localStorage.setItem("laud_avatar", base64);
+      const b64 = await resizeImageToBase64(file);
+      setAvatar(b64);
+      localStorage.setItem("laud_avatar", b64);
     } catch {}
   };
 
-  const removeAvatar = () => {
+  const removeAvatar = (e) => {
+    e.stopPropagation();
     setAvatar("");
     localStorage.removeItem("laud_avatar");
   };
 
-  const createRoom = () => {
-    if (!username.trim()) {
-      alert("Введите имя");
-      return;
-    }
-
+  const go = (id) => {
+    if (!username.trim()) { alert("Введите имя"); return; }
     localStorage.setItem("laudUsername", username.trim());
-
-    const newRoomId = Math.random().toString(36).slice(2, 8);
-    navigate(`/room/${newRoomId}`, {
-      state: { username: username.trim() }
-    });
+    navigate(`/room/${id}`, { state: { username: username.trim() } });
   };
 
+  const createRoom = () => go(Math.random().toString(36).slice(2, 8));
+
   const joinRoom = () => {
-    if (!username.trim() || !roomId.trim()) {
-      alert("Введите имя и ID комнаты");
-      return;
-    }
-
-    localStorage.setItem("laudUsername", username.trim());
-
-    navigate(`/room/${roomId.trim()}`, {
-      state: { username: username.trim() }
-    });
+    if (!roomId.trim()) { alert("Введите ID комнаты"); return; }
+    go(roomId.trim());
   };
 
   const initial = username.trim().slice(0, 1).toUpperCase() || "?";
@@ -85,35 +72,27 @@ function HomePage() {
   return (
     <div className="home-page">
       <div className="home-card">
-        <h1 className="home-title">LAUD</h1>
-        <p className="home-subtitle">совместный просмотр с друзьями</p>
+        <div className="home-logo">
+          <div className="home-logo-text">LAUD</div>
+        </div>
+        <p className="home-tagline">совместный просмотр с друзьями</p>
 
-        <div className="avatar-upload-wrap">
+        {/* Avatar */}
+        <div className="avatar-wrap">
           <button
-            className="avatar-upload-btn"
+            className="avatar-btn"
             type="button"
             onClick={() => fileInputRef.current?.click()}
-            aria-label="Загрузить аватарку"
+            aria-label="Загрузить аватар"
           >
-            {avatar ? (
-              <img src={avatar} className="avatar-upload-img" alt="" />
-            ) : (
-              <span className="avatar-upload-placeholder">{initial}</span>
-            )}
-            <span className="avatar-upload-overlay">
-              {avatar ? "Изменить" : "Фото"}
-            </span>
+            {avatar
+              ? <img src={avatar} className="avatar-img" alt="" />
+              : <span className="avatar-initial">{initial}</span>
+            }
+            <span className="avatar-overlay">{avatar ? "Изменить" : "Фото"}</span>
           </button>
-
           {avatar && (
-            <button
-              className="avatar-remove-btn"
-              type="button"
-              onClick={removeAvatar}
-              aria-label="Удалить аватарку"
-            >
-              ✕
-            </button>
+            <button className="avatar-remove" type="button" onClick={removeAvatar} aria-label="Удалить">✕</button>
           )}
         </div>
 
@@ -125,36 +104,40 @@ function HomePage() {
           onChange={handleAvatarChange}
         />
 
-        <input
-          className="app-input"
-          type="text"
-          placeholder="Ваше имя"
-          value={username}
-          onChange={(e) => setUsername(e.target.value)}
-          onKeyDown={(e) => { if (e.key === "Enter") createRoom(); }}
-        />
+        <div className="home-field">
+          <input
+            className="app-input"
+            type="text"
+            placeholder="Ваше имя"
+            value={username}
+            autoComplete="nickname"
+            onChange={(e) => setUsername(e.target.value)}
+            onKeyDown={(e) => { if (e.key === "Enter") createRoom(); }}
+          />
+        </div>
 
-        <button className="primary-button" onClick={createRoom}>
+        <button className="btn btn-primary" onClick={createRoom}>
           Создать комнату
         </button>
 
-        <div className="home-divider">или</div>
+        <div className="home-divider">или войти</div>
 
-        <input
-          className="app-input"
-          type="text"
-          placeholder="ID комнаты"
-          value={roomId}
-          onChange={(e) => setRoomId(e.target.value)}
-          onKeyDown={(e) => { if (e.key === "Enter") joinRoom(); }}
-        />
+        <div className="home-field">
+          <input
+            className="app-input"
+            type="text"
+            placeholder="ID комнаты"
+            value={roomId}
+            autoComplete="off"
+            onChange={(e) => setRoomId(e.target.value)}
+            onKeyDown={(e) => { if (e.key === "Enter") joinRoom(); }}
+          />
+        </div>
 
-        <button className="secondary-button" onClick={joinRoom}>
+        <button className="btn btn-secondary" onClick={joinRoom}>
           Войти
         </button>
       </div>
     </div>
   );
 }
-
-export default HomePage;
