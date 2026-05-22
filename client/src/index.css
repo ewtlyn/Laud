@@ -1163,6 +1163,20 @@ input {
     display: none;
   }
 
+  /* Keyboard open: strip player card to just the video */
+  .keyboard-open .player-card .section-header,
+  .keyboard-open .video-toolbar,
+  .keyboard-open .micro-hint,
+  .keyboard-open .suggestions-panel,
+  .keyboard-open .suggest-row {
+    display: none;
+  }
+
+  .keyboard-open .player-card {
+    padding: 6px;
+    flex-shrink: 0;
+  }
+
   .mobile-chat-only {
     display: flex;
     flex-direction: column;
