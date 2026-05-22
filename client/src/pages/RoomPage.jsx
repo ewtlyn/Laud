@@ -2,6 +2,7 @@ import { useEffect, useMemo, useRef, useState } from "react";
 import { useLocation, useNavigate, useParams } from "react-router-dom";
 import { io } from "socket.io-client";
 import YouTubeSyncPlayer from "../components/YouTubeSyncPlayer";
+import VKSyncPlayer from "../components/VKSyncPlayer";
 
 const SERVER_URL = import.meta.env.VITE_SERVER_URL || "http://localhost:5001";
 
@@ -162,14 +163,18 @@ function RoomPage() {
 
     const update = () => {
       document.documentElement.style.setProperty("--app-height", `${vv.height}px`);
+      document.documentElement.style.setProperty("--app-offset-top", `${vv.offsetTop}px`);
       setKeyboardOpen(window.innerHeight - vv.height > 120);
     };
 
     update();
     vv.addEventListener("resize", update);
+    vv.addEventListener("scroll", update);
     return () => {
       vv.removeEventListener("resize", update);
+      vv.removeEventListener("scroll", update);
       document.documentElement.style.removeProperty("--app-height");
+      document.documentElement.style.removeProperty("--app-offset-top");
     };
   }, []);
 
@@ -569,6 +574,21 @@ function RoomPage() {
     });
   };
 
+  const handleVkPlay = (currentTime) => {
+    if (!isHost) return;
+    socket.emit("play_video", { roomId, currentTime });
+  };
+
+  const handleVkPause = (currentTime) => {
+    if (!isHost) return;
+    socket.emit("pause_video", { roomId, currentTime });
+  };
+
+  const handleVkProgress = (currentTime, isPlaying) => {
+    if (!isHost) return;
+    socket.emit("sync_progress", { roomId, currentTime, isPlaying: isPlaying ?? playingRef.current });
+  };
+
   const handleYoutubePlay = (currentTime) => {
     if (!isHost) return;
 
@@ -610,7 +630,11 @@ function RoomPage() {
       roomId,
       username,
       message: text,
-      clientMessageId
+      clientMessageId,
+      avatar: localStorage.getItem("laud_avatar") || "",
+      replyTo: replyTo
+        ? { id: replyTo.id, username: replyTo.username, message: replyTo.message }
+        : null
     });
 
     setMessage("");
@@ -660,17 +684,17 @@ function RoomPage() {
 
     if (videoType === "vk") {
       return (
-        <div className="vk-player-wrap">
-          <iframe
-            src={videoUrl}
-            title="VK Video"
-            className="player-iframe vk-frame"
-            allow="autoplay; encrypted-media; fullscreen; picture-in-picture"
-            allowFullScreen
-            frameBorder="0"
+        <div style={{ position: "relative" }}>
+          <VKSyncPlayer
+            videoUrl={videoUrl}
+            playing={playing}
+            seekToSeconds={youtubeSeekTime}
+            isHost={isHost}
+            onPlay={handleVkPlay}
+            onPause={handleVkPause}
+            onProgress={handleVkProgress}
           />
           {controlsOverlay}
-          {playerError && <div className="player-error-inline">{playerError}</div>}
         </div>
       );
     }

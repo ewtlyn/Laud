@@ -1189,6 +1189,10 @@ input {
   }
 
   .room-shell {
+    position: fixed;
+    top: var(--app-offset-top, 0px);
+    left: 0;
+    right: 0;
     height: var(--app-height, 100dvh);
     display: flex;
     flex-direction: column;
