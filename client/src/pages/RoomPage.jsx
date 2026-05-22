@@ -108,6 +108,7 @@ function RoomPage() {
   const [suggestUrl, setSuggestUrl] = useState("");
   const [suggestionSent, setSuggestionSent] = useState(false);
   const [mobileMenuOpen, setMobileMenuOpen] = useState(false);
+  const [keyboardOpen, setKeyboardOpen] = useState(false);
 
   useEffect(() => {
     videoUrlRef.current = videoUrl;
@@ -152,6 +153,21 @@ function RoomPage() {
       document.body.style.height = "";
       document.body.style.overflow = "";
     };
+  }, []);
+
+  useEffect(() => {
+    const vv = window.visualViewport;
+    if (!vv) return;
+
+    let baseHeight = vv.height;
+
+    const onResize = () => {
+      const diff = baseHeight - vv.height;
+      setKeyboardOpen(diff > 120);
+    };
+
+    vv.addEventListener("resize", onResize);
+    return () => vv.removeEventListener("resize", onResize);
   }, []);
 
   const isHost = useMemo(() => {
@@ -941,7 +957,7 @@ function RoomPage() {
   );
 
   return (
-    <div className="room-page room-shell">
+    <div className={`room-page room-shell${keyboardOpen ? " keyboard-open" : ""}`}>
       {renderSettings()}
 
       {sidebarOpen && (

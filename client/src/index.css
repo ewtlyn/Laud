@@ -1159,6 +1159,10 @@ input {
 }
 
 @media (max-width: 980px) {
+  .keyboard-open .room-topbar {
+    display: none;
+  }
+
   .mobile-chat-only {
     display: flex;
     flex-direction: column;
