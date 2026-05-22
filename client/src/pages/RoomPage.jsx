@@ -145,6 +145,11 @@ function RoomPage() {
       document.documentElement.style.height = mobile ? "100%" : "";
       document.body.style.height = mobile ? "100%" : "";
       document.body.style.overflow = mobile ? "hidden" : "";
+      const root = document.getElementById("root");
+      if (root) {
+        root.style.height = mobile ? "100%" : "";
+        root.style.overflow = mobile ? "hidden" : "";
+      }
     };
     apply(mq.matches);
     const handler = (e) => apply(e.matches);
@@ -154,6 +159,8 @@ function RoomPage() {
       document.documentElement.style.height = "";
       document.body.style.height = "";
       document.body.style.overflow = "";
+      const root = document.getElementById("root");
+      if (root) { root.style.height = ""; root.style.overflow = ""; }
     };
   }, []);
 
@@ -161,20 +168,24 @@ function RoomPage() {
     const vv = window.visualViewport;
     if (!vv) return;
 
+    const baseline = vv.height;
+
     const update = () => {
-      document.documentElement.style.setProperty("--app-height", `${vv.height}px`);
-      document.documentElement.style.setProperty("--app-offset-top", `${vv.offsetTop}px`);
-      setKeyboardOpen(window.innerHeight - vv.height > 120);
+      const h = vv.height;
+      const isOpen = baseline - h > 120;
+      document.documentElement.style.setProperty("--app-height", `${h}px`);
+      setKeyboardOpen(isOpen);
     };
 
     update();
     vv.addEventListener("resize", update);
     vv.addEventListener("scroll", update);
+    window.addEventListener("resize", update);
     return () => {
       vv.removeEventListener("resize", update);
       vv.removeEventListener("scroll", update);
+      window.removeEventListener("resize", update);
       document.documentElement.style.removeProperty("--app-height");
-      document.documentElement.style.removeProperty("--app-offset-top");
     };
   }, []);
 

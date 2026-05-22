@@ -1175,6 +1175,18 @@ input {
   .keyboard-open .player-card {
     padding: 6px;
     flex-shrink: 0;
+    max-height: 40vh;
+    overflow: hidden;
+  }
+
+  .keyboard-open .player-stage {
+    max-height: 38vh;
+    overflow: hidden;
+  }
+
+  .keyboard-open .player-wrap,
+  .keyboard-open .vk-player-wrap {
+    max-height: 38vh;
   }
 
   .mobile-chat-only {
@@ -1203,10 +1215,6 @@ input {
   }
 
   .room-shell {
-    position: fixed;
-    top: var(--app-offset-top, 0px);
-    left: 0;
-    right: 0;
     height: var(--app-height, 100dvh);
     display: flex;
     flex-direction: column;
