@@ -62,10 +62,10 @@ export default function VKSyncPlayer({
         return;
       }
 
-      if (suppressRef.current) return;
-
       const pos = pl.position ?? pl.time ?? 0;
       currentPosRef.current = pos;
+
+      if (suppressRef.current) return;
 
       if (pl.type === "started" && isHostRef.current) {
         onPlayRef.current?.(pos);

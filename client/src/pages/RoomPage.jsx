@@ -177,14 +177,32 @@ function RoomPage() {
       setKeyboardOpen(isOpen);
     };
 
+    const onFocusIn = (e) => {
+      if (!e.target.matches("input, textarea")) return;
+      setTimeout(update, 350);
+    };
+
+    const onFocusOut = (e) => {
+      if (!e.target.matches("input, textarea")) return;
+      setTimeout(() => {
+        if (!document.activeElement?.matches("input, textarea")) {
+          document.documentElement.style.setProperty("--app-height", `${baseline}px`);
+          setKeyboardOpen(false);
+        }
+      }, 100);
+    };
+
     update();
     vv.addEventListener("resize", update);
-    vv.addEventListener("scroll", update);
     window.addEventListener("resize", update);
+    document.addEventListener("focusin", onFocusIn);
+    document.addEventListener("focusout", onFocusOut);
+
     return () => {
       vv.removeEventListener("resize", update);
-      vv.removeEventListener("scroll", update);
       window.removeEventListener("resize", update);
+      document.removeEventListener("focusin", onFocusIn);
+      document.removeEventListener("focusout", onFocusOut);
       document.documentElement.style.removeProperty("--app-height");
     };
   }, []);
@@ -219,7 +237,7 @@ function RoomPage() {
     setPlaying(Boolean(state.isPlaying));
     setPlayerError("");
 
-    if (nextType === "youtube") {
+    if (nextType === "youtube" || nextType === "vk") {
       const currentSeek = youtubeSeekRef.current || 0;
       const diff = Math.abs(currentSeek - expectedTime);
 

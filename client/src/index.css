@@ -1175,18 +1175,15 @@ input {
   .keyboard-open .player-card {
     padding: 6px;
     flex-shrink: 0;
-    max-height: 40vh;
+    max-height: calc(var(--app-height, 50dvh) * 0.45);
     overflow: hidden;
   }
 
-  .keyboard-open .player-stage {
-    max-height: 38vh;
-    overflow: hidden;
-  }
-
+  .keyboard-open .player-stage,
   .keyboard-open .player-wrap,
   .keyboard-open .vk-player-wrap {
-    max-height: 38vh;
+    max-height: calc(var(--app-height, 50dvh) * 0.42);
+    overflow: hidden;
   }
 
   .mobile-chat-only {
