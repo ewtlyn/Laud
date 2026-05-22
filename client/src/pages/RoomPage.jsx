@@ -81,6 +81,7 @@ function RoomPage() {
   const playingRef = useRef(false);
   const youtubeSeekRef = useRef(0);
   const lastRemoteSyncRef = useRef(0);
+  const lastVideoStateRef = useRef(null);
 
   const [users, setUsers] = useState([]);
   const [hostClientId, setHostClientId] = useState("");
@@ -192,6 +193,7 @@ function RoomPage() {
 
   const applyRemoteVideoState = (state) => {
     if (!state) return;
+    lastVideoStateRef.current = state;
 
     const nextType = state.videoType || "file";
     const expectedTime = getExpectedTime(state);
@@ -695,6 +697,21 @@ function RoomPage() {
             else { requestFreshRoomState(); }
           }}
           onTimeUpdate={handleFileTimeUpdate}
+          onLoadedMetadata={() => {
+            if (!isHost && lastVideoStateRef.current && htmlVideoRef.current) {
+              const expectedTime = getExpectedTime(lastVideoStateRef.current);
+              suppressHtmlEventsRef.current = true;
+              try {
+                if (Math.abs(htmlVideoRef.current.currentTime - expectedTime) > 1) {
+                  htmlVideoRef.current.currentTime = expectedTime;
+                }
+                if (lastVideoStateRef.current.isPlaying) {
+                  htmlVideoRef.current.play().catch(() => {});
+                }
+              } catch {}
+              setTimeout(() => { suppressHtmlEventsRef.current = false; }, 300);
+            }
+          }}
           onWaiting={() => { if (!isHost) requestFreshRoomState(); }}
           onStalled={() => { if (!isHost) requestFreshRoomState(); }}
           className="player-video"

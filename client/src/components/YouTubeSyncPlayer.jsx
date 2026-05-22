@@ -82,6 +82,7 @@ export default function YouTubeSyncPlayer({
   const readyRef = useRef(false);
   const lastProgressSentRef = useRef(-1);
   const [errorText, setErrorText] = useState("");
+  const [playerReadyCount, setPlayerReadyCount] = useState(0);
 
   const onReadyRef = useRef(onReady);
   const onPlayRef = useRef(onPlay);
@@ -168,6 +169,7 @@ export default function YouTubeSyncPlayer({
                 }
               } catch {}
 
+              setPlayerReadyCount((c) => c + 1);
               onReadyRef.current?.();
             },
             onStateChange: (event) => {
@@ -269,7 +271,7 @@ export default function YouTubeSyncPlayer({
     return () => {
       if (releaseTimer) clearTimeout(releaseTimer);
     };
-  }, [playing, seekToSeconds]);
+  }, [playing, seekToSeconds, playerReadyCount]);
 
   useEffect(() => {
     if (!isHost || !playerRef.current || !readyRef.current) return;
