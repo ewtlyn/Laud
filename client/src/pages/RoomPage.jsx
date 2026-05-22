@@ -159,15 +159,17 @@ function RoomPage() {
     const vv = window.visualViewport;
     if (!vv) return;
 
-    let baseHeight = vv.height;
-
-    const onResize = () => {
-      const diff = baseHeight - vv.height;
-      setKeyboardOpen(diff > 120);
+    const update = () => {
+      document.documentElement.style.setProperty("--app-height", `${vv.height}px`);
+      setKeyboardOpen(window.innerHeight - vv.height > 120);
     };
 
-    vv.addEventListener("resize", onResize);
-    return () => vv.removeEventListener("resize", onResize);
+    update();
+    vv.addEventListener("resize", update);
+    return () => {
+      vv.removeEventListener("resize", update);
+      document.documentElement.style.removeProperty("--app-height");
+    };
   }, []);
 
   const isHost = useMemo(() => {

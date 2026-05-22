@@ -1188,9 +1188,8 @@ input {
     min-height: 220px;
   }
 
-  /* Фиксируем страницу по высоте — клавиатура не двигает видео */
   .room-shell {
-    height: 100dvh;
+    height: var(--app-height, 100dvh);
     display: flex;
     flex-direction: column;
     overflow: hidden;
