@@ -15,6 +15,19 @@ const socket = io(SERVER_URL, {
   transports: ["websocket", "polling"]
 });
 
+function extractYoutubeId(url) {
+  try {
+    const p = new URL(url);
+    if (p.hostname.includes("youtu.be")) return p.pathname.split("/").filter(Boolean)[0] || null;
+    if (p.hostname.includes("youtube.com")) {
+      if (p.pathname === "/watch") return p.searchParams.get("v");
+      if (p.pathname.startsWith("/embed/")) return p.pathname.split("/embed/")[1]?.split(/[?/&]/)[0] || null;
+      if (p.pathname.startsWith("/shorts/")) return p.pathname.split("/shorts/")[1]?.split(/[?/&]/)[0] || null;
+    }
+  } catch {}
+  return null;
+}
+
 function normalizeVkUrl(url) {
   if (!url) return url;
   if (url.includes("video_ext.php")) return url;
@@ -100,6 +113,7 @@ function RoomPage() {
   const [useYoutubeProxy, setUseYoutubeProxy] = useState(
     () => localStorage.getItem("laud_yt_proxy") === "1"
   );
+  const useYoutubeProxyRef = useRef(localStorage.getItem("laud_yt_proxy") === "1");
 
   const [roomSettings, setRoomSettings] = useState({
     allowParticipantControls: true,
@@ -127,6 +141,10 @@ function RoomPage() {
   useEffect(() => {
     youtubeSeekRef.current = youtubeSeekTime;
   }, [youtubeSeekTime]);
+
+  useEffect(() => {
+    useYoutubeProxyRef.current = useYoutubeProxy;
+  }, [useYoutubeProxy]);
 
   useEffect(() => {
     const handleResize = () => {
@@ -237,37 +255,39 @@ function RoomPage() {
     setPlaying(Boolean(state.isPlaying));
     setPlayerError("");
 
-    if (nextType === "youtube" || nextType === "vk") {
+    // VK: controlled by VKSyncPlayer via seekToSeconds/playing props
+    if (nextType === "vk") {
       const currentSeek = youtubeSeekRef.current || 0;
-      const diff = Math.abs(currentSeek - expectedTime);
-
-      if (diff > 2) {
+      if (Math.abs(currentSeek - expectedTime) > 2) {
         setYoutubeSeekTime(expectedTime);
       }
       return;
     }
 
-    if (nextType === "file" && htmlVideoRef.current) {
-      suppressHtmlEventsRef.current = true;
+    // YouTube IFrame (no proxy): controlled by YouTubeSyncPlayer via seekToSeconds/playing props
+    if (nextType === "youtube" && !useYoutubeProxyRef.current) {
+      const currentSeek = youtubeSeekRef.current || 0;
+      if (Math.abs(currentSeek - expectedTime) > 2) {
+        setYoutubeSeekTime(expectedTime);
+      }
+      return;
+    }
 
+    // File video OR YouTube via proxy: direct control of htmlVideoRef
+    if (htmlVideoRef.current) {
+      suppressHtmlEventsRef.current = true;
       try {
         const current = Number(htmlVideoRef.current.currentTime) || 0;
-        const diff = Math.abs(current - expectedTime);
-
-        if (diff > 2) {
+        if (Math.abs(current - expectedTime) > 2) {
           htmlVideoRef.current.currentTime = expectedTime;
         }
-
         if (state.isPlaying && htmlVideoRef.current.paused) {
           htmlVideoRef.current.play().catch(() => {});
         } else if (!state.isPlaying && !htmlVideoRef.current.paused) {
           htmlVideoRef.current.pause();
         }
       } catch {}
-
-      setTimeout(() => {
-        suppressHtmlEventsRef.current = false;
-      }, 250);
+      setTimeout(() => { suppressHtmlEventsRef.current = false; }, 250);
     }
   };
 
@@ -693,6 +713,54 @@ function RoomPage() {
       return <div className="player-placeholder">Видео пока не выбрано</div>;
     }
 
+    if (videoType === "youtube" && useYoutubeProxy) {
+      const yid = extractYoutubeId(videoUrl);
+      const proxyUrl = yid ? `${SERVER_URL}/api/youtube-stream/${yid}` : null;
+
+      if (proxyUrl) {
+        const revertToHostStateProxy = () => {
+          suppressHtmlEventsRef.current = true;
+          const vid = htmlVideoRef.current;
+          if (!vid) return;
+          if (playingRef.current && vid.paused) vid.play().catch(() => {});
+          if (!playingRef.current && !vid.paused) vid.pause();
+          setTimeout(() => { suppressHtmlEventsRef.current = false; }, 300);
+        };
+        return (
+          <div className="player-wrap">
+            <video
+              ref={htmlVideoRef}
+              src={proxyUrl}
+              controls
+              onPlay={() => isHost ? handleFilePlay() : revertToHostStateProxy()}
+              onPause={() => isHost ? handleFilePause() : revertToHostStateProxy()}
+              onSeeked={() => { if (isHost) handleFileSeeked(); else requestFreshRoomState(); }}
+              onTimeUpdate={handleFileTimeUpdate}
+              onLoadedMetadata={() => {
+                if (!isHost && lastVideoStateRef.current && htmlVideoRef.current) {
+                  const expectedTime = getExpectedTime(lastVideoStateRef.current);
+                  suppressHtmlEventsRef.current = true;
+                  try {
+                    if (Math.abs(htmlVideoRef.current.currentTime - expectedTime) > 1) {
+                      htmlVideoRef.current.currentTime = expectedTime;
+                    }
+                    if (lastVideoStateRef.current.isPlaying) {
+                      htmlVideoRef.current.play().catch(() => {});
+                    }
+                  } catch {}
+                  setTimeout(() => { suppressHtmlEventsRef.current = false; }, 300);
+                }
+              }}
+              onWaiting={() => { if (!isHost) requestFreshRoomState(); }}
+              onStalled={() => { if (!isHost) requestFreshRoomState(); }}
+              className="player-video"
+            />
+            {controlsOverlay}
+          </div>
+        );
+      }
+    }
+
     if (videoType === "youtube") {
       return (
         <div className="player-youtube-wrap">
@@ -724,6 +792,17 @@ function RoomPage() {
             onProgress={handleVkProgress}
           />
           {controlsOverlay}
+          {isHost && (
+            <div className="vk-sync-bar">
+              <button
+                className="vk-sync-btn"
+                onClick={() => playing ? handleVkPause(youtubeSeekTime) : handleVkPlay(youtubeSeekTime)}
+              >
+                {playing ? "⏸ Пауза (синк)" : "▶ Играть (синк)"}
+              </button>
+              <span className="vk-sync-hint">Используй эти кнопки для синхронизации</span>
+            </div>
+          )}
         </div>
       );
     }

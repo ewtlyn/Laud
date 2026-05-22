@@ -19,6 +19,7 @@ export default function VKSyncPlayer({
   const readyRef = useRef(false);
   const suppressRef = useRef(false);
   const currentPosRef = useRef(0);
+  const posTimerRef = useRef(null);
   const [playerReadyCount, setPlayerReadyCount] = useState(0);
 
   const isHostRef = useRef(isHost);
@@ -40,10 +41,24 @@ export default function VKSyncPlayer({
     } catch {}
   };
 
-  // listen for events from VK iframe
+  // Local position timer — tracks elapsed time when playing (fallback when VK JS API events don't fire)
+  useEffect(() => {
+    clearInterval(posTimerRef.current);
+    if (playing && readyRef.current) {
+      const startTime = Date.now();
+      const startPos = currentPosRef.current;
+      posTimerRef.current = setInterval(() => {
+        currentPosRef.current = startPos + (Date.now() - startTime) / 1000;
+      }, 500);
+    }
+    return () => clearInterval(posTimerRef.current);
+  }, [playing, playerReadyCount]);
+
+  // Listen for events from VK iframe
   useEffect(() => {
     readyRef.current = false;
     currentPosRef.current = 0;
+    clearInterval(posTimerRef.current);
 
     const onMessage = (e) => {
       let data;
@@ -63,11 +78,11 @@ export default function VKSyncPlayer({
       }
 
       const pos = pl.position ?? pl.time ?? 0;
-      currentPosRef.current = pos;
+      currentPosRef.current = pos; // always update position, even when suppressed
 
       if (suppressRef.current) return;
 
-      if (pl.type === "started" && isHostRef.current) {
+      if ((pl.type === "started" || pl.type === "resumed") && isHostRef.current) {
         onPlayRef.current?.(pos);
       }
 
@@ -84,10 +99,11 @@ export default function VKSyncPlayer({
     return () => {
       window.removeEventListener("message", onMessage);
       readyRef.current = false;
+      clearInterval(posTimerRef.current);
     };
   }, [videoUrl]);
 
-  // apply state when playing/seekToSeconds changes OR player becomes ready
+  // Apply state when playing/seekToSeconds changes OR player becomes ready
   useEffect(() => {
     if (!readyRef.current) return;
 
