@@ -114,29 +114,48 @@ export default function RoomPage() {
   useEffect(() => {
     const vv = window.visualViewport;
 
-    const update = () => {
+    // update --app-height immediately as keyboard animates (no delay)
+    const updateHeight = () => {
       const h = vv ? vv.height : window.innerHeight;
       document.documentElement.style.setProperty("--app-height", `${h}px`);
-      if (vv) {
-        setKeyboardOpen(window.screen.height - vv.height > 150);
-      }
     };
 
-    update();
-    if (vv) vv.addEventListener("resize", update);
-    window.addEventListener("resize", update);
+    // use focus events for keyboard state — avoids false positives from Safari UI chrome
+    const onFocusIn = (e) => {
+      if (!e.target.matches("input, textarea")) return;
+      setKeyboardOpen(true);
+    };
+
+    const onFocusOut = (e) => {
+      if (!e.target.matches("input, textarea")) return;
+      setTimeout(() => {
+        if (!document.activeElement?.matches("input, textarea")) {
+          setKeyboardOpen(false);
+        }
+      }, 100);
+    };
+
+    updateHeight();
+    if (vv) vv.addEventListener("resize", updateHeight);
+    window.addEventListener("resize", updateHeight);
+    document.addEventListener("focusin", onFocusIn);
+    document.addEventListener("focusout", onFocusOut);
 
     return () => {
-      if (vv) vv.removeEventListener("resize", update);
-      window.removeEventListener("resize", update);
+      if (vv) vv.removeEventListener("resize", updateHeight);
+      window.removeEventListener("resize", updateHeight);
+      document.removeEventListener("focusin", onFocusIn);
+      document.removeEventListener("focusout", onFocusOut);
       document.documentElement.style.removeProperty("--app-height");
     };
   }, []);
 
-  // scroll chat to bottom when keyboard opens so input is visible
+  // scroll to bottom when keyboard opens so input stays visible
   useEffect(() => {
     if (keyboardOpen) {
-      messagesEndRef.current?.scrollIntoView({ behavior: "instant" });
+      requestAnimationFrame(() => {
+        messagesEndRef.current?.scrollIntoView({ behavior: "instant" });
+      });
     }
   }, [keyboardOpen]);
 
