@@ -79,21 +79,26 @@ export default function HomePage() {
 
         {/* Avatar */}
         <div className="avatar-wrap">
-          <button
-            className="avatar-btn"
-            type="button"
-            onClick={() => fileInputRef.current?.click()}
-            aria-label="Загрузить аватар"
-          >
-            {avatar
-              ? <img src={avatar} className="avatar-img" alt="" />
-              : <span className="avatar-initial">{initial}</span>
-            }
-            <span className="avatar-overlay">{avatar ? "Изменить" : "Фото"}</span>
-          </button>
-          {avatar && (
-            <button className="avatar-remove" type="button" onClick={removeAvatar} aria-label="Удалить">✕</button>
-          )}
+          <div className="avatar-inner">
+            <button
+              className="avatar-btn"
+              type="button"
+              onClick={() => fileInputRef.current?.click()}
+              aria-label="Загрузить аватар"
+            >
+              {avatar
+                ? <img src={avatar} className="avatar-img" alt="" />
+                : <span className="avatar-initial">{initial}</span>
+              }
+              <span className="avatar-overlay">{avatar ? "изменить" : "фото"}</span>
+            </button>
+            {avatar && (
+              <button className="avatar-remove" type="button" onClick={removeAvatar} aria-label="Удалить">✕</button>
+            )}
+          </div>
+          <span className="avatar-label" onClick={() => fileInputRef.current?.click()}>
+            {avatar ? "изменить" : "choose pic"}
+          </span>
         </div>
 
         <input

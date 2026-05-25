@@ -243,6 +243,11 @@ export default function RoomPage() {
     const onNewSuggestion = (sug) => setPendingSuggestions((p) => [...p, sug]);
     const onSuggestionResponse = () => setSuggestionSent(false);
 
+    const onKicked = () => {
+      leavingRef.current = false;
+      navigate("/");
+    };
+
     const onPlay = ({ currentTime, lastActionAt }) =>
       applyRemoteState({ videoUrl: videoUrlRef.current, videoType: videoTypeRef.current, currentTime, isPlaying: true, lastActionAt });
     const onPause = ({ currentTime, lastActionAt }) =>
@@ -295,6 +300,7 @@ export default function RoomPage() {
     socket.on("room_settings", onRoomSettings);
     socket.on("new_suggestion", onNewSuggestion);
     socket.on("suggestion_response", onSuggestionResponse);
+    socket.on("kicked", onKicked);
     socket.on("play_video", onPlay);
     socket.on("pause_video", onPause);
     socket.on("seek_video", onSeek);
@@ -313,6 +319,7 @@ export default function RoomPage() {
       socket.off("room_settings", onRoomSettings);
       socket.off("new_suggestion", onNewSuggestion);
       socket.off("suggestion_response", onSuggestionResponse);
+      socket.off("kicked", onKicked);
       socket.off("play_video", onPlay);
       socket.off("pause_video", onPause);
       socket.off("seek_video", onSeek);
@@ -354,6 +361,10 @@ export default function RoomPage() {
     socket.emit("transfer_host", { roomId, targetClientId }, (r) => {
       if (r?.ok) setSettingsOpen(false);
     });
+  };
+
+  const handleKickUser = (targetClientId) => {
+    socket.emit("kick_user", { roomId, targetClientId });
   };
 
   const handleSuggestVideo = () => {
@@ -589,6 +600,20 @@ export default function RoomPage() {
   const renderSettings = () => {
     if (!settingsOpen) return null;
     const others = users.filter((u) => u.clientId !== clientIdRef.current);
+
+    const Toggle = ({ checked, onChange }) => (
+      <div
+        className={`toggle-track${checked ? " on" : ""}`}
+        onClick={onChange}
+        role="switch"
+        aria-checked={checked}
+        tabIndex={0}
+        onKeyDown={(e) => { if (e.key === " " || e.key === "Enter") onChange(); }}
+      >
+        <div className="toggle-thumb" />
+      </div>
+    );
+
     return (
       <>
         <div className="modal-backdrop" onClick={() => setSettingsOpen(false)} />
@@ -598,42 +623,17 @@ export default function RoomPage() {
             <button className="btn btn-icon" onClick={() => setSettingsOpen(false)}>✕</button>
           </div>
 
-          <div className="modal-section">
-            <div className="modal-section-label">Передать права хоста</div>
-            {others.length === 0
-              ? <p className="modal-empty">Нет других участников</p>
-              : others.map((u) => (
-                <div key={u.clientId} className="modal-user-row">
-                  <div className="user-avatar" style={{ width: 28, height: 28, fontSize: 12 }}>
-                    {u.avatar ? <img src={u.avatar} alt="" /> : (u.username || "?")[0].toUpperCase()}
-                  </div>
-                  <span className="modal-user-name">{u.username}</span>
-                  <button className="btn btn-secondary modal-transfer-btn" onClick={() => handleTransferHost(u.clientId)}>
-                    Передать
-                  </button>
-                </div>
-              ))
-            }
-          </div>
-
-          <div className="modal-divider" />
-
+          {/* Toggles */}
           <div className="modal-section">
             <div className="toggle-row">
               <div className="toggle-label-group">
                 <span className="toggle-label">Управление участниками</span>
-                <span className="toggle-desc">Разрешить участникам ставить паузу и перематывать</span>
+                <span className="toggle-desc">Участники могут ставить паузу и перематывать</span>
               </div>
-              <div
-                className={`toggle-track${roomSettings.allowParticipantControls ? " on" : ""}`}
-                onClick={() => handleUpdateSettings({ allowParticipantControls: !roomSettings.allowParticipantControls })}
-                role="switch"
-                aria-checked={roomSettings.allowParticipantControls}
-                tabIndex={0}
-                onKeyDown={(e) => { if (e.key === " " || e.key === "Enter") handleUpdateSettings({ allowParticipantControls: !roomSettings.allowParticipantControls }); }}
-              >
-                <div className="toggle-thumb" />
-              </div>
+              <Toggle
+                checked={roomSettings.allowParticipantControls}
+                onChange={() => handleUpdateSettings({ allowParticipantControls: !roomSettings.allowParticipantControls })}
+              />
             </div>
           </div>
 
@@ -645,18 +645,44 @@ export default function RoomPage() {
                 <span className="toggle-label">Предложения видео</span>
                 <span className="toggle-desc">Участники могут предлагать видео хосту</span>
               </div>
-              <div
-                className={`toggle-track${roomSettings.allowVideoSuggestions ? " on" : ""}`}
-                onClick={() => handleUpdateSettings({ allowVideoSuggestions: !roomSettings.allowVideoSuggestions })}
-                role="switch"
-                aria-checked={roomSettings.allowVideoSuggestions}
-                tabIndex={0}
-                onKeyDown={(e) => { if (e.key === " " || e.key === "Enter") handleUpdateSettings({ allowVideoSuggestions: !roomSettings.allowVideoSuggestions }); }}
-              >
-                <div className="toggle-thumb" />
-              </div>
+              <Toggle
+                checked={roomSettings.allowVideoSuggestions}
+                onChange={() => handleUpdateSettings({ allowVideoSuggestions: !roomSettings.allowVideoSuggestions })}
+              />
             </div>
           </div>
+
+          {/* Participants management */}
+          {others.length > 0 && (
+            <>
+              <div className="modal-divider" />
+              <div className="modal-section">
+                <div className="modal-section-label">Участники</div>
+                {others.map((u) => (
+                  <div key={u.clientId} className="modal-user-row">
+                    <div className="user-avatar" style={{ width: 28, height: 28, fontSize: 12 }}>
+                      {u.avatar ? <img src={u.avatar} alt="" /> : (u.username || "?")[0].toUpperCase()}
+                    </div>
+                    <span className="modal-user-name">{u.username}</span>
+                    <button
+                      className="btn btn-secondary modal-transfer-btn"
+                      onClick={() => handleTransferHost(u.clientId)}
+                      title="Передать права хоста"
+                    >
+                      Хост
+                    </button>
+                    <button
+                      className="btn modal-kick-btn"
+                      onClick={() => handleKickUser(u.clientId)}
+                      title="Выгнать из комнаты"
+                    >
+                      Кик
+                    </button>
+                  </div>
+                ))}
+              </div>
+            </>
+          )}
         </div>
       </>
     );
@@ -687,30 +713,24 @@ export default function RoomPage() {
       <header className="topbar">
         <div className="topbar-left">
           <span className="topbar-logo">LAUD</span>
-          <div className="topbar-info">
-            <span className="topbar-pill">#{roomId}</span>
-            <span className="topbar-pill">{username}</span>
-            {isHost && <span className="topbar-pill host">Host</span>}
-          </div>
-          <div className="topbar-status">
-            <span className={`status-dot${isConnected ? "" : " offline"}`} />
-            <span>{isConnected ? "Online" : "Reconnecting..."}</span>
+          <div className="topbar-meta">
+            <span className="topbar-meta-room">#{roomId}</span>
+            {isHost && (
+              <>
+                <span className="topbar-meta-sep">·</span>
+                <span className="topbar-meta-role">Host</span>
+              </>
+            )}
+            <span className="topbar-meta-sep">·</span>
+            <div className="topbar-meta-status">
+              <span className={`status-dot${isConnected ? "" : " offline"}`} />
+              <span>{isConnected ? "Online" : "..."}</span>
+            </div>
           </div>
         </div>
 
         <div className="topbar-actions">
-          {/* Desktop */}
-          {isHost && (
-            <button className="btn btn-ghost desktop-only" onClick={() => setSettingsOpen(true)}>
-              Настройки
-            </button>
-          )}
-          <button className="btn btn-ghost desktop-only" onClick={handleLeave}>
-            Выйти
-          </button>
-
-          {/* Mobile burger */}
-          <div className="mobile-menu-wrap mobile-only" style={{ display: "block" }}>
+          <div className="mobile-menu-wrap" style={{ display: "block" }}>
             <button
               className="btn btn-icon"
               onClick={() => setMenuOpen((v) => !v)}
@@ -778,14 +798,12 @@ export default function RoomPage() {
                   className="app-input"
                   type="url"
                   inputMode="url"
-                  placeholder="YouTube / VK / .mp4"
+                  placeholder="Youtube / VK / .mp4"
                   value={inputUrl}
                   onChange={(e) => setInputUrl(e.target.value)}
                   onKeyDown={(e) => { if (e.key === "Enter") handleSetVideo(); }}
                 />
-                <button className="btn btn-primary" onClick={handleSetVideo}>
-                  Поставить
-                </button>
+                <button className="host-play-btn" onClick={handleSetVideo} aria-label="Поставить">▶</button>
               </div>
             )}
 
@@ -804,9 +822,7 @@ export default function RoomPage() {
                       onChange={(e) => setSuggestUrl(e.target.value)}
                       onKeyDown={(e) => { if (e.key === "Enter") handleSuggestVideo(); }}
                     />
-                    <button className="btn btn-secondary" onClick={handleSuggestVideo}>
-                      →
-                    </button>
+                    <button className="host-play-btn" onClick={handleSuggestVideo} aria-label="Предложить">▶</button>
                   </div>
                 )
             )}
@@ -869,26 +885,29 @@ export default function RoomPage() {
           <div className="side-section side-chat">
             <div className="side-section-header">
               <h2 className="side-section-title">Чат</h2>
+              <div className="side-section-sub">Общение в реальном времени</div>
             </div>
             <div className="side-chat-messages">
               {messages.length === 0 && (
                 <div className="chat-empty" style={{ flex: "none", padding: "20px 0" }}>
-                  <span className="chat-empty-icon" style={{ fontSize: 22 }}>💬</span>
+                  <span className="chat-empty-icon">💬</span>
                   <span className="chat-empty-text">Пока тихо</span>
                 </div>
               )}
               {messages.map(renderMsg)}
             </div>
             <div className="side-chat-input">
-              <input
-                className="app-input"
-                type="text"
-                placeholder="Сообщение…"
-                value={message}
-                onChange={(e) => setMessage(e.target.value)}
-                onKeyDown={(e) => { if (e.key === "Enter") sendMessage(); }}
-              />
-              <button className="send-btn" onClick={sendMessage} aria-label="Отправить">→</button>
+              <div className="chat-input-row" style={{ width: "100%" }}>
+                <input
+                  className="chat-input"
+                  type="text"
+                  placeholder="Сообщение…"
+                  value={message}
+                  onChange={(e) => setMessage(e.target.value)}
+                  onKeyDown={(e) => { if (e.key === "Enter") sendMessage(); }}
+                />
+                <button className="send-btn" onClick={sendMessage} aria-label="Отправить">▶</button>
+              </div>
             </div>
           </div>
         </aside>
