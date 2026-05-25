@@ -114,45 +114,31 @@ export default function RoomPage() {
   useEffect(() => {
     const vv = window.visualViewport;
 
-    const updateHeight = () => {
+    const update = () => {
       const h = vv ? vv.height : window.innerHeight;
       document.documentElement.style.setProperty("--app-height", `${h}px`);
+      if (vv) {
+        setKeyboardOpen(window.screen.height - vv.height > 150);
+      }
     };
 
-    const onFocusIn = (e) => {
-      if (!e.target.matches("input, textarea")) return;
-      setTimeout(() => {
-        const h = vv ? vv.height : window.innerHeight;
-        const winH = window.screen.height;
-        setKeyboardOpen(winH - h > 150);
-        updateHeight();
-      }, 350);
-    };
-
-    const onFocusOut = (e) => {
-      if (!e.target.matches("input, textarea")) return;
-      setTimeout(() => {
-        if (!document.activeElement?.matches("input, textarea")) {
-          setKeyboardOpen(false);
-          updateHeight();
-        }
-      }, 150);
-    };
-
-    updateHeight();
-    if (vv) vv.addEventListener("resize", updateHeight);
-    window.addEventListener("resize", updateHeight);
-    document.addEventListener("focusin", onFocusIn);
-    document.addEventListener("focusout", onFocusOut);
+    update();
+    if (vv) vv.addEventListener("resize", update);
+    window.addEventListener("resize", update);
 
     return () => {
-      if (vv) vv.removeEventListener("resize", updateHeight);
-      window.removeEventListener("resize", updateHeight);
-      document.removeEventListener("focusin", onFocusIn);
-      document.removeEventListener("focusout", onFocusOut);
+      if (vv) vv.removeEventListener("resize", update);
+      window.removeEventListener("resize", update);
       document.documentElement.style.removeProperty("--app-height");
     };
   }, []);
+
+  // scroll chat to bottom when keyboard opens so input is visible
+  useEffect(() => {
+    if (keyboardOpen) {
+      messagesEndRef.current?.scrollIntoView({ behavior: "instant" });
+    }
+  }, [keyboardOpen]);
 
   const isHost = useMemo(
     () => hostClientId === clientIdRef.current,

@@ -362,6 +362,7 @@ button, input, textarea { font-family: inherit; }
   overflow: hidden;
   border: 1px solid var(--border);
   position: relative;
+  transition: height 0.2s ease, aspect-ratio 0.2s ease;
 }
 
 .player-stage iframe,
