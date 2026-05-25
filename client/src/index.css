@@ -627,6 +627,82 @@ button, input, textarea { font-family: inherit; }
 .reply-clear { background: transparent; border: none; color: var(--text3); cursor: pointer; font-size: 14px; padding: 4px; line-height: 1; }
 .reply-clear:hover { color: var(--text); }
 
+/* ─── CHAT PHOTO BUTTON ─── */
+.chat-photo-btn {
+  flex-shrink: 0;
+  width: 40px;
+  background: transparent;
+  border: none;
+  border-right: 1px solid var(--border2);
+  color: var(--text3);
+  cursor: pointer;
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  font-size: 15px;
+  transition: color 0.15s;
+}
+.chat-photo-btn:hover { color: var(--text2); }
+
+/* ─── CHAT IMAGE MESSAGE ─── */
+.msg-image {
+  display: block;
+  max-width: 220px;
+  max-height: 220px;
+  border-radius: 10px;
+  object-fit: cover;
+  margin-top: 4px;
+  cursor: pointer;
+  transition: opacity 0.15s;
+}
+.msg-image:hover { opacity: 0.88; }
+
+/* ─── SCROLL TO BOTTOM BUTTON ─── */
+.chat-panel { position: relative; }
+
+.scroll-to-bottom-btn {
+  position: absolute;
+  bottom: 70px;
+  right: 20px;
+  width: 34px;
+  height: 34px;
+  border-radius: 50%;
+  background: var(--bg3);
+  border: 1px solid var(--border2);
+  color: var(--text2);
+  cursor: pointer;
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  font-size: 15px;
+  z-index: 5;
+  box-shadow: 0 2px 8px rgba(0,0,0,0.4);
+  transition: background 0.15s, color 0.15s;
+}
+.scroll-to-bottom-btn:hover { background: var(--bg2); color: var(--text); }
+
+/* ─── PiP BUTTON OVERLAY ─── */
+.pip-btn {
+  position: absolute;
+  top: 10px;
+  right: 10px;
+  z-index: 5;
+  width: 32px;
+  height: 32px;
+  border-radius: 8px;
+  background: rgba(0,0,0,0.55);
+  border: none;
+  color: rgba(255,255,255,0.7);
+  cursor: pointer;
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  font-size: 14px;
+  transition: background 0.15s, color 0.15s;
+  backdrop-filter: blur(4px);
+}
+.pip-btn:hover { background: rgba(0,0,0,0.8); color: #fff; }
+
 .chat-input-row {
   display: flex;
   align-items: stretch;
@@ -1011,8 +1087,7 @@ button, input, textarea { font-family: inherit; }
     height: clamp(90px, 24vw, 170px);
   }
   .keyboard-open .topbar { display: none; }
-  .keyboard-open .host-controls,
-  .keyboard-open .suggest-row,
+  /* host-controls and suggest-row stay visible — user may be typing in them */
   .keyboard-open .suggest-sent,
   .keyboard-open .vk-sync-bar,
   .keyboard-open .suggestions-panel { display: none; }

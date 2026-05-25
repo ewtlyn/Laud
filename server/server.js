@@ -334,12 +334,12 @@ io.on("connection", (socket) => {
   socket.on("send_message", ({ roomId, username, message, clientMessageId, replyTo, type, gifUrl }, callback) => {
     if (!rooms[roomId]) { callback?.({ ok: false, error: "ROOM_NOT_FOUND" }); return; }
 
-    const safeType = type === "gif" ? "gif" : "text";
+    const safeType = type === "gif" ? "gif" : type === "image" ? "image" : "text";
     const safeMessage = typeof message === "string" ? message.trim() : "";
     const safeGifUrl = typeof gifUrl === "string" ? gifUrl.trim() : "";
 
     if (safeType === "text" && !safeMessage) { callback?.({ ok: false, error: "EMPTY_TEXT" }); return; }
-    if (safeType === "gif" && !safeGifUrl) { callback?.({ ok: false, error: "EMPTY_GIF" }); return; }
+    if ((safeType === "gif" || safeType === "image") && !safeGifUrl) { callback?.({ ok: false, error: "EMPTY_GIF" }); return; }
 
     const payload = {
       id: clientMessageId || createId("msg"),
@@ -347,7 +347,7 @@ io.on("connection", (socket) => {
       avatar: socket.avatar || "",
       type: safeType,
       message: safeType === "text" ? safeMessage : "",
-      gifUrl: safeType === "gif" ? safeGifUrl : "",
+      gifUrl: (safeType === "gif" || safeType === "image") ? safeGifUrl : "",
       replyTo: replyTo ? { id: replyTo.id || "", username: replyTo.username || "Пользователь", message: replyTo.message || "", type: replyTo.type || "text", gifUrl: replyTo.gifUrl || "" } : null,
       time: new Date().toLocaleTimeString(),
       createdAt: Date.now()

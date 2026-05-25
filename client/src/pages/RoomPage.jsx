@@ -1,4 +1,4 @@
-import { useEffect, useMemo, useRef, useState } from "react";
+import { useCallback, useEffect, useMemo, useRef, useState } from "react";
 import { useLocation, useNavigate, useParams } from "react-router-dom";
 import { io } from "socket.io-client";
 import YouTubeSyncPlayer from "../components/YouTubeSyncPlayer";
@@ -16,6 +16,30 @@ const socket = io(SERVER_URL, {
 });
 
 // ─── helpers ────────────────────────────────────────────────────────────────
+
+function resizeImageForChat(file) {
+  return new Promise((resolve, reject) => {
+    const img = new Image();
+    const url = URL.createObjectURL(file);
+    img.onload = () => {
+      URL.revokeObjectURL(url);
+      const MAX = 600;
+      let { width, height } = img;
+      if (width > MAX || height > MAX) {
+        const ratio = Math.min(MAX / width, MAX / height);
+        width = Math.round(width * ratio);
+        height = Math.round(height * ratio);
+      }
+      const canvas = document.createElement("canvas");
+      canvas.width = width;
+      canvas.height = height;
+      canvas.getContext("2d").drawImage(img, 0, 0, width, height);
+      resolve(canvas.toDataURL("image/jpeg", 0.82));
+    };
+    img.onerror = reject;
+    img.src = url;
+  });
+}
 
 function normalizeVkUrl(url) {
   if (!url) return url;
@@ -70,6 +94,9 @@ export default function RoomPage() {
   const clientIdRef = useRef(getOrCreateClientId());
   const htmlVideoRef = useRef(null);
   const messagesEndRef = useRef(null);
+  const chatMessagesRef = useRef(null);
+  const photoInputRef = useRef(null);
+  const atBottomRef = useRef(true);
   const suppressHtmlRef = useRef(false);
   const leavingRef = useRef(false);
   const lastFileSyncRef = useRef(-1);
@@ -103,6 +130,7 @@ export default function RoomPage() {
   const [drawerOpen, setDrawerOpen] = useState(false);
   const [menuOpen, setMenuOpen] = useState(false);
   const [keyboardOpen, setKeyboardOpen] = useState(false);
+  const [isAtBottom, setIsAtBottom] = useState(true);
 
   // keep refs in sync
   useEffect(() => { videoUrlRef.current = videoUrl; }, [videoUrl]);
@@ -158,6 +186,17 @@ export default function RoomPage() {
       });
     }
   }, [keyboardOpen]);
+
+  // auto PiP when tab is hidden (HTML5 video only)
+  useEffect(() => {
+    const onVisibilityChange = () => {
+      if (document.hidden && videoTypeRef.current === "file" && playingRef.current) {
+        htmlVideoRef.current?.requestPictureInPicture().catch(() => {});
+      }
+    };
+    document.addEventListener("visibilitychange", onVisibilityChange);
+    return () => document.removeEventListener("visibilitychange", onVisibilityChange);
+  }, []);
 
   const isHost = useMemo(
     () => hostClientId === clientIdRef.current,
@@ -334,9 +373,11 @@ export default function RoomPage() {
     };
   }, [roomId, username, navigate, isHost]); // eslint-disable-line
 
-  // auto-scroll chat
+  // auto-scroll only when already at bottom
   useEffect(() => {
-    messagesEndRef.current?.scrollIntoView({ behavior: "smooth" });
+    if (atBottomRef.current) {
+      messagesEndRef.current?.scrollIntoView({ behavior: "smooth" });
+    }
   }, [messages]);
 
   // ─── host actions ─────────────────────────────────────────────────────────
@@ -460,6 +501,49 @@ export default function RoomPage() {
 
   const handleLeave = () => { leavingRef.current = true; navigate("/"); };
 
+  const handleChatScroll = useCallback(() => {
+    const el = chatMessagesRef.current;
+    if (!el) return;
+    const atBottom = el.scrollHeight - el.scrollTop - el.clientHeight < 60;
+    atBottomRef.current = atBottom;
+    setIsAtBottom(atBottom);
+  }, []);
+
+  const scrollToBottom = () => {
+    atBottomRef.current = true;
+    setIsAtBottom(true);
+    messagesEndRef.current?.scrollIntoView({ behavior: "smooth" });
+  };
+
+  const handlePhotoUpload = async (e) => {
+    const file = e.target.files?.[0];
+    if (!file) return;
+    e.target.value = "";
+    try {
+      const imageData = await resizeImageForChat(file);
+      const id = typeof crypto !== "undefined" && crypto.randomUUID
+        ? crypto.randomUUID()
+        : `msg_${Date.now()}_${Math.random().toString(36).slice(2, 8)}`;
+      socket.emit("send_message", {
+        roomId, username, message: "", clientMessageId: id,
+        avatar: localStorage.getItem("laud_avatar") || "",
+        replyTo: null,
+        type: "image",
+        gifUrl: imageData,
+      });
+    } catch {}
+  };
+
+  const handlePiP = () => {
+    const v = htmlVideoRef.current;
+    if (!v) return;
+    if (document.pictureInPictureElement) {
+      document.exitPictureInPicture().catch(() => {});
+    } else {
+      v.requestPictureInPicture().catch(() => {});
+    }
+  };
+
   // ─── render helpers ────────────────────────────────────────────────────────
 
   const canControl = isHost || roomSettings.allowParticipantControls;
@@ -554,6 +638,9 @@ export default function RoomPage() {
           onWaiting={() => { if (!isHost) requestFreshState(); }}
         />
         {overlay}
+        {document.pictureInPictureEnabled && (
+          <button className="pip-btn" onClick={handlePiP} title="Картинка в картинке">⧉</button>
+        )}
       </div>
     );
   };
@@ -580,7 +667,10 @@ export default function RoomPage() {
             <span className="msg-name">{msg.username}</span>
             <span className="msg-time">{msg.time}</span>
           </div>
-          <div className="msg-body">{msg.message}</div>
+          {msg.type === "image"
+            ? <img className="msg-image" src={msg.gifUrl} alt="photo" onClick={(e) => e.stopPropagation()} />
+            : <div className="msg-body">{msg.message}</div>
+          }
         </div>
       </div>
     );
@@ -848,7 +938,7 @@ export default function RoomPage() {
               </div>
             )}
 
-            <div className="chat-messages">
+            <div className="chat-messages" ref={chatMessagesRef} onScroll={handleChatScroll}>
               {messages.length === 0 && (
                 <div className="chat-empty">
                   <span className="chat-empty-icon">💬</span>
@@ -859,7 +949,23 @@ export default function RoomPage() {
               <div ref={messagesEndRef} />
             </div>
 
+            {!isAtBottom && (
+              <button className="scroll-to-bottom-btn" onClick={scrollToBottom} aria-label="Вниз">↓</button>
+            )}
+
             <div className="chat-input-row">
+              <input
+                ref={photoInputRef}
+                type="file"
+                accept="image/*"
+                style={{ display: "none" }}
+                onChange={handlePhotoUpload}
+              />
+              <button
+                className="chat-photo-btn"
+                onClick={() => photoInputRef.current?.click()}
+                aria-label="Фото"
+              >🖼</button>
               <input
                 className="app-input chat-input"
                 type="text"
