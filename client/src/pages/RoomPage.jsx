@@ -819,7 +819,7 @@ export default function RoomPage() {
             <span className="topbar-meta-sep">·</span>
             <div className="topbar-meta-status">
               <span className={`status-dot${isConnected ? "" : " offline"}`} />
-              <span>{isConnected ? "Online" : "..."}</span>
+              <span>{isConnected ? "Онлайн" : "..."}</span>
             </div>
           </div>
         </div>
@@ -1009,6 +1009,11 @@ export default function RoomPage() {
             </div>
             <div className="side-chat-input">
               <div className="chat-input-row" style={{ width: "100%" }}>
+                <button
+                  className="chat-photo-btn"
+                  onClick={() => photoInputRef.current?.click()}
+                  aria-label="Фото"
+                >🖼</button>
                 <input
                   className="chat-input"
                   type="text"
