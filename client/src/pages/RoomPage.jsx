@@ -95,6 +95,7 @@ export default function RoomPage() {
   const htmlVideoRef = useRef(null);
   const messagesEndRef = useRef(null);
   const chatMessagesRef = useRef(null);
+  const sideChatMessagesRef = useRef(null);
   const photoInputRef = useRef(null);
   const atBottomRef = useRef(true);
   const suppressHtmlRef = useRef(false);
@@ -182,7 +183,8 @@ export default function RoomPage() {
   useEffect(() => {
     if (keyboardOpen) {
       requestAnimationFrame(() => {
-        messagesEndRef.current?.scrollIntoView({ behavior: "instant" });
+        const el = chatMessagesRef.current;
+        if (el) el.scrollTop = el.scrollHeight;
       });
     }
   }, [keyboardOpen]);
@@ -375,9 +377,11 @@ export default function RoomPage() {
 
   // auto-scroll only when already at bottom
   useEffect(() => {
-    if (atBottomRef.current) {
-      messagesEndRef.current?.scrollIntoView({ behavior: "smooth" });
-    }
+    if (!atBottomRef.current) return;
+    const mobile = chatMessagesRef.current;
+    const desktop = sideChatMessagesRef.current;
+    if (mobile) mobile.scrollTop = mobile.scrollHeight;
+    if (desktop) desktop.scrollTop = desktop.scrollHeight;
   }, [messages]);
 
   // ─── host actions ─────────────────────────────────────────────────────────
@@ -501,9 +505,8 @@ export default function RoomPage() {
 
   const handleLeave = () => { leavingRef.current = true; navigate("/"); };
 
-  const handleChatScroll = useCallback(() => {
-    const el = chatMessagesRef.current;
-    if (!el) return;
+  const handleChatScroll = useCallback((e) => {
+    const el = e.currentTarget;
     const atBottom = el.scrollHeight - el.scrollTop - el.clientHeight < 60;
     atBottomRef.current = atBottom;
     setIsAtBottom(atBottom);
@@ -512,7 +515,10 @@ export default function RoomPage() {
   const scrollToBottom = () => {
     atBottomRef.current = true;
     setIsAtBottom(true);
-    messagesEndRef.current?.scrollIntoView({ behavior: "smooth" });
+    const mobile = chatMessagesRef.current;
+    const desktop = sideChatMessagesRef.current;
+    if (mobile) mobile.scrollTo({ top: mobile.scrollHeight, behavior: "smooth" });
+    if (desktop) desktop.scrollTo({ top: desktop.scrollHeight, behavior: "smooth" });
   };
 
   const handlePhotoUpload = async (e) => {
@@ -998,7 +1004,7 @@ export default function RoomPage() {
               <h2 className="side-section-title">Чат</h2>
               <div className="side-section-sub">Общение в реальном времени</div>
             </div>
-            <div className="side-chat-messages">
+            <div className="side-chat-messages" ref={sideChatMessagesRef} onScroll={handleChatScroll}>
               {messages.length === 0 && (
                 <div className="chat-empty" style={{ flex: "none", padding: "20px 0" }}>
                   <span className="chat-empty-icon">💬</span>
@@ -1007,6 +1013,9 @@ export default function RoomPage() {
               )}
               {messages.map(renderMsg)}
             </div>
+            {!isAtBottom && (
+              <button className="scroll-to-bottom-btn side-scroll-btn" onClick={scrollToBottom} aria-label="Вниз">↓</button>
+            )}
             <div className="side-chat-input">
               <div className="chat-input-row" style={{ width: "100%" }}>
                 <button

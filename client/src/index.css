@@ -17,6 +17,7 @@ body {
   background: var(--bg);
   color: var(--text);
   height: 100%;
+  overflow: hidden;
   overscroll-behavior: none;
 }
 
@@ -841,6 +842,12 @@ button, input, textarea { font-family: inherit; }
   display: flex;
   flex-direction: column;
   overflow: hidden;
+  position: relative;
+}
+
+.side-scroll-btn {
+  bottom: 80px;
+  right: 16px;
 }
 
 .side-chat-messages {
