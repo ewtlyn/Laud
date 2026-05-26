@@ -143,10 +143,12 @@ export default function RoomPage() {
   useEffect(() => {
     const vv = window.visualViewport;
 
-    // update --app-height immediately as keyboard animates (no delay)
+    // track both height and offsetTop of visual viewport
     const updateHeight = () => {
       const h = vv ? vv.height : window.innerHeight;
+      const top = vv ? vv.offsetTop : 0;
       document.documentElement.style.setProperty("--app-height", `${h}px`);
+      document.documentElement.style.setProperty("--app-top", `${top}px`);
     };
 
     // use focus events for keyboard state — avoids false positives from Safari UI chrome
@@ -165,13 +167,19 @@ export default function RoomPage() {
     };
 
     updateHeight();
-    if (vv) vv.addEventListener("resize", updateHeight);
+    if (vv) {
+      vv.addEventListener("resize", updateHeight);
+      vv.addEventListener("scroll", updateHeight);
+    }
     window.addEventListener("resize", updateHeight);
     document.addEventListener("focusin", onFocusIn);
     document.addEventListener("focusout", onFocusOut);
 
     return () => {
-      if (vv) vv.removeEventListener("resize", updateHeight);
+      if (vv) {
+        vv.removeEventListener("resize", updateHeight);
+        vv.removeEventListener("scroll", updateHeight);
+      }
       window.removeEventListener("resize", updateHeight);
       document.removeEventListener("focusin", onFocusIn);
       document.removeEventListener("focusout", onFocusOut);
