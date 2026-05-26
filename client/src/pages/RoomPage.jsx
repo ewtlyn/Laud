@@ -965,7 +965,7 @@ export default function RoomPage() {
                 className="chat-photo-btn"
                 onClick={() => photoInputRef.current?.click()}
                 aria-label="Фото"
-              >🖼</button>
+              ><svg width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round"><rect x="3" y="8" width="18" height="13" rx="2"/><path d="M9 8V6a3 3 0 0 1 6 0v2"/><circle cx="12" cy="14" r="2.5"/></svg></button>
               <input
                 className="app-input chat-input"
                 type="text"
@@ -1013,7 +1013,7 @@ export default function RoomPage() {
                   className="chat-photo-btn"
                   onClick={() => photoInputRef.current?.click()}
                   aria-label="Фото"
-                >🖼</button>
+                ><svg width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round"><rect x="3" y="8" width="18" height="13" rx="2"/><path d="M9 8V6a3 3 0 0 1 6 0v2"/><circle cx="12" cy="14" r="2.5"/></svg></button>
                 <input
                   className="chat-input"
                   type="text"
