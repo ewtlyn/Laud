@@ -72,7 +72,8 @@ Don't forget to set `VITE_SERVER_URL` in the frontend's `.env` so it points to y
 ## Deployment
 
 [The project deploys to Render as two independent services — backend as a Web Service, frontend as a Static Site. Configuration details (build/start commands) are in the comments of each part's `package.json`.
-](https://laud-client.onrender.com
+]
+https://laud-client.onrender.com
 <img width="1437" height="778" alt="Screenshot 2026-06-22 at 20 18 07" src="https://github.com/user-attachments/assets/1c2f8b28-9efd-4d80-a836-8cc6e270d130" />
 <img width="1440" height="783" alt="Screenshot 2026-06-22 at 20 20 50" src="https://github.com/user-attachments/assets/4e92f36f-a3ca-4fc0-aa8b-e1b8988bea81" />)
 
