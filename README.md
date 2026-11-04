@@ -9,10 +9,10 @@ A synchronized video-watching web platform, a Rave-like app. Watch YouTube and V
 ![WebSocket](https://img.shields.io/badge/Realtime-WebSocket-black)
 ![Render](https://img.shields.io/badge/Deploy-Render-46E3B7)
 
-![Laud home page]<img width="1440" height="780" alt="home" src="https://github.com/user-attachments/assets/9e8b0408-63c0-446e-834c-b7a95aedac48" />
+Laud home page <img width="1440" height="780" alt="home" src="https://github.com/user-attachments/assets/9e8b0408-63c0-446e-834c-b7a95aedac48" />
 
 
-![Laud room: player, chat, participants, queue]<img width="1440" height="777" alt="room" src="https://github.com/user-attachments/assets/58d5d6f5-a40d-4219-9047-d3d3933d4f74" />
+Laud room: player, chat, participants, queue <img width="1440" height="777" alt="room" src="https://github.com/user-attachments/assets/58d5d6f5-a40d-4219-9047-d3d3933d4f74" />
 
 ---
 
