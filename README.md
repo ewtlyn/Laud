@@ -1,48 +1,58 @@
 # Laud
 
-A synchronized video-watching web platform — a Rave-like app. Watch YouTube and VK videos together in real time, with chat and rooms.
+A synchronized video-watching web platform, a Rave-like app. Watch YouTube and VK videos together in real time, with chat and rooms.
+
+**Live version: [laud.lvkosp.ru](https://laud.lvkosp.ru)**
 
 ![Node.js](https://img.shields.io/badge/Backend-Node.js-339933)
 ![Vite](https://img.shields.io/badge/Frontend-Vite-646CFF)
 ![WebSocket](https://img.shields.io/badge/Realtime-WebSocket-black)
 ![Render](https://img.shields.io/badge/Deploy-Render-46E3B7)
 
+![Laud home page](docs/screenshots/home.png)
+
+![Laud room: player, chat, participants, queue](docs/screenshots/room.png)
+
 ---
 
 ## About
 
-Laud lets you watch YouTube and VK videos together with friends: create a room, drop a link, and the player syncs for everyone in the room — pause, seek, and changing videos instantly reflect for all participants. Each room has a built-in chat to discuss what's happening on screen.
+Laud lets you watch YouTube and VK videos together with friends: create a room, drop a link, and the player syncs for everyone in the room. Pause, seek, and changing videos instantly reflect for all participants. Each room has a built-in chat to discuss what's happening on screen.
+
+Laud is part of the **LVKOSP** ecosystem: Telegram bots, a messenger and web services built and maintained by me. Messenger and social network: [lvkosp.ru](https://lvkosp.ru).
 
 ## Features
 
-- Create rooms for watching together
+- Create rooms by pasting a video link, join by room code or link
+- "Now watching" list of open rooms, search by room or video, categories (friends, movies, series, music, other)
 - Playback sync (play/pause/seek) across all room participants
 - Support for two video sources: YouTube and VK
-- Built-in real-time chat
-- Dark, minimalist interface
+- Host role: the host controls playback in the room
+- Video queue and an "Add video" button during playback
+- Built-in real-time chat with emoji and images, participants list, invite friends
+- Reactions over the video (heart, laugh, fire, surprise, applause)
+- Dark, minimalist, responsive interface
 
 ## Tech Stack
 
 - **Backend:** Node.js (WebSocket server for state synchronization)
 - **Frontend:** Vite + JavaScript
 - **Realtime:** WebSocket connections for syncing the player and chat
-- **Deployment:** Render — backend and frontend run as two independent services
+- **Deployment:** Render. Backend and frontend run as two independent services
 
 ## Architecture
 
 The project consists of two standalone parts deployed separately:
 
 ```
-laud/
-  server.js       ← WebSocket + REST backend
-  package.json
-  src/             ← frontend (Vite)
-  dist/            ← built frontend bundle
+Laud/
+  server/   ← WebSocket + REST backend
+  client/   ← frontend (Vite)
 ```
 
 **Backend (Web Service on Render)**
-- Holds room state and syncs playback between clients via WebSocket
-- Serves REST endpoints for creating/finding rooms
+- Holds room state (current video, position, pause state, participants, queue) and syncs playback between clients via WebSocket
+- Serves REST endpoints for creating and finding rooms
 - Port is read from `process.env.PORT`
 
 **Frontend (Static Site on Render)**
@@ -52,33 +62,47 @@ laud/
 ## Running locally
 
 ```bash
-git clone https://github.com/<your-username>/laud.git
-cd laud
-npm install
+git clone https://github.com/ewtlyn/Laud.git
+cd Laud
 ```
 
 **Backend:**
 ```bash
+cd server
+npm install
 node server.js
 ```
 
-**Frontend:**
+**Frontend** (in a second terminal):
 ```bash
+cd client
+npm install
 npm run dev
 ```
 
-Don't forget to set `VITE_SERVER_URL` in the frontend's `.env` so it points to your local backend.
+Create `client/.env` and point it to your local backend:
+
+```
+VITE_SERVER_URL=http://localhost:3001
+```
+
+Use the port your backend actually listens on.
 
 ## Deployment
 
-[The project deploys to Render as two independent services — backend as a Web Service, frontend as a Static Site. Configuration details (build/start commands) are in the comments of each part's `package.json`.
-]
-https://laud-client.onrender.com
-<img width="1437" height="778" alt="Screenshot 2026-06-22 at 20 18 07" src="https://github.com/user-attachments/assets/1c2f8b28-9efd-4d80-a836-8cc6e270d130" />
-<img width="1440" height="783" alt="Screenshot 2026-06-22 at 20 20 50" src="https://github.com/user-attachments/assets/4e92f36f-a3ca-4fc0-aa8b-e1b8988bea81" />)
+The project deploys to Render as two independent services: the backend as a Web Service, the frontend as a Static Site. Build and start commands are in each part's `package.json`.
+
+Live: [laud.lvkosp.ru](https://laud.lvkosp.ru)
+
+## Status
+
+This repository shows the core of the project. The current version with the updated design runs at [laud.lvkosp.ru](https://laud.lvkosp.ru) and is developed separately.
 
 ## Roadmap
 
 - Support for additional video platforms
 - Room watch history
-- Reactions and emoji over the video
+
+## Author
+
+Ekaterina, [@ewtlyn](https://t.me/ewtlyn) on Telegram, [GitHub](https://github.com/ewtlyn)
